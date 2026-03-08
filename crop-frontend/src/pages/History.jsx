@@ -296,7 +296,7 @@ export default function History() {
                 >
                   <div className="relative aspect-[4/3] bg-slate-100 dark:bg-slate-900">
                     <img
-                      src={`http://127.0.0.1:8000${scan.image}`}
+                      src={`https://agri-ai-7fnp.onrender.com${scan.image}`}
                       alt={scan.disease || "Crop scan"}
                       className="h-full w-full object-cover"
                       onError={(e) => {

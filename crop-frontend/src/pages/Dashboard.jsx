@@ -420,7 +420,7 @@ export default function Dashboard() {
                   {/* Image */}
                   <div className="h-64 md:h-auto md:w-80 lg:w-96 relative">
                     <img
-                      src={`http://127.0.0.1:8000${latest.image || latest.image_url || ""}`}
+                      src={`https://agri-ai-7fnp.onrender.com${latest.image || latest.image_url || ""}`}
                       alt={latest.disease || latest.disease_name || "Crop scan"}
                       className="h-full w-full object-cover"
                       onError={(e) => {
