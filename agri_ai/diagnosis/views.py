@@ -1,69 +1,103 @@
-# views.py
-import torch
+# diagnosis/views.py
 import io
+import logging
+import threading
+from typing import Tuple, Dict, Any
+
 from PIL import Image
 
-from django.contrib.auth.models import User
-from django.contrib.auth import authenticate
+import torch
+import torch.nn as nn
+from torchvision import models, transforms
 
-from rest_framework.views import APIView
-from rest_framework.response import Response
+from django.contrib.auth import authenticate
+from django.contrib.auth.models import User
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.permissions import IsAuthenticated
-
-from torchvision import models
-import torchvision.transforms as transforms
-import torch.nn as nn
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from .models import Diagnosis, Scan
-from .serializers import DiagnosisSerializer
 from .recommendations import RECOMMENDATIONS
 
+logger = logging.getLogger(__name__)
 
-# ------------------------------
-# MODEL LOADING
-# ------------------------------
+# ────────────────────────────────────────────────
+#  MODEL LOADING (LAZY + THREAD-SAFE)
+# ────────────────────────────────────────────────
 
-MODEL = None
-CLASS_NAMES = None
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
-def load_model():
-    global MODEL, CLASS_NAMES
-
-    if MODEL is None:
-        checkpoint = torch.load("diagnosis/ml/model.pth", map_location=DEVICE)
-
-        CLASS_NAMES = checkpoint["class_names"]
-
-        model = models.resnet18(weights=None)
-        model.fc = nn.Linear(model.fc.in_features, len(CLASS_NAMES))
-
-        model.load_state_dict(checkpoint["model_state_dict"])
-        model.to(DEVICE)
-        model.eval()
-
-        MODEL = model
-
-    return MODEL
+_model = None
+_class_names = None
+_model_lock = threading.Lock()
+_model_initialized = False
 
 
-# ------------------------------
-# IMAGE PREDICTION
-# ------------------------------
+def get_model_and_classes() -> Tuple[nn.Module, list]:
+    """
+    Lazy-load the model and class names (only once, thread-safe).
+    Returns (model, class_names)
+    """
+    global _model, _class_names, _model_initialized
 
-def predict(image_file):
-    model = load_model()
-    image = Image.open(image_file).convert("RGB")
+    if _model_initialized:
+        return _model, _class_names
+
+    with _model_lock:
+        if _model_initialized:  # double-checked locking
+            return _model, _class_names
+
+        logger.info("Loading plant disease classification model...")
+
+        try:
+            checkpoint = torch.load(
+                "diagnosis/ml/model.pth",
+                map_location=DEVICE,
+                weights_only=True  # safer in newer torch versions
+            )
+
+            _class_names = checkpoint["class_names"]
+
+            model = models.resnet18(weights=None)
+            num_features = model.fc.in_features
+            model.fc = nn.Linear(num_features, len(_class_names))
+
+            model.load_state_dict(checkpoint["model_state_dict"])
+            model.to(DEVICE)
+            model.eval()
+
+            _model = model
+            _model_initialized = True
+
+            logger.info(f"Model loaded successfully on {DEVICE}. Classes: {len(_class_names)}")
+
+        except Exception as e:
+            logger.exception("Failed to load model")
+            raise RuntimeError(f"Model loading failed: {str(e)}") from e
+
+        return _model, _class_names
+
+
+# ────────────────────────────────────────────────
+#  PREDICTION FUNCTION
+# ────────────────────────────────────────────────
+
+def predict(image_file) -> Tuple[str, float]:
+    model, class_names = get_model_and_classes()
+
+    try:
+        image = Image.open(image_file).convert("RGB")
+    except Exception as e:
+        raise ValueError("Invalid image file") from e
 
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(
-            [0.485, 0.456, 0.406],
-            [0.229, 0.224, 0.225]
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
         )
     ])
 
@@ -74,46 +108,47 @@ def predict(image_file):
         probabilities = torch.softmax(outputs, dim=1)
         confidence, predicted_idx = torch.max(probabilities, 1)
 
-    predicted = CLASS_NAMES[predicted_idx.item()]
-    confidence = round(confidence.item() * 100, 2)
+    predicted_class = class_names[predicted_idx.item()]
+    confidence_pct = round(confidence.item() * 100, 2)
 
-    return predicted, confidence
+    return predicted_class, confidence_pct
 
 
-# ------------------------------
-# USER REGISTRATION
-# ------------------------------
+# ────────────────────────────────────────────────
+#  API VIEWS
+# ────────────────────────────────────────────────
 
 class RegisterView(APIView):
-
     def post(self, request):
         username = request.data.get("username")
         email = request.data.get("email")
         password = request.data.get("password")
 
+        if not all([username, email, password]):
+            return Response({"error": "Missing required fields"}, status=400)
+
         if User.objects.filter(username=username).exists():
             return Response({"error": "Username already exists"}, status=400)
 
-        user = User.objects.create_user(
-            username=username,
-            email=email,
-            password=password
-        )
+        try:
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password
+            )
+            token = Token.objects.create(user=user)
 
-        token = Token.objects.create(user=user)
+            return Response({
+                "message": "User created successfully",
+                "token": token.key
+            }, status=201)
 
-        return Response({
-            "message": "User created successfully",
-            "token": token.key
-        })
+        except Exception as e:
+            logger.exception("User registration failed")
+            return Response({"error": str(e)}, status=500)
 
-
-# ------------------------------
-# LOGIN
-# ------------------------------
 
 class LoginView(APIView):
-
     def post(self, request):
         username = request.data.get("username")
         password = request.data.get("password")
@@ -123,17 +158,13 @@ class LoginView(APIView):
         if user is None:
             return Response({"error": "Invalid credentials"}, status=401)
 
-        token, created = Token.objects.get_or_create(user=user)
+        token, _ = Token.objects.get_or_create(user=user)
 
         return Response({
             "token": token.key,
             "username": user.username
         })
 
-
-# ------------------------------
-# DASHBOARD
-# ------------------------------
 
 class DashboardView(APIView):
     permission_classes = [IsAuthenticated]
@@ -146,35 +177,29 @@ class DashboardView(APIView):
         })
 
 
-# ------------------------------
-# SCAN CROPS (AI PREDICTION)
-# ------------------------------
-
 class ScanCropView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        image = request.FILES.get("image")
-        if not image:
+        image_file = request.FILES.get("image")
+        if not image_file:
             return Response({"error": "No image uploaded"}, status=400)
 
         try:
-            disease, confidence = predict(image)
+            disease, confidence = predict(image_file)
 
-            # Normalize disease key (handle casing and double underscores)
+            # Normalize disease key
             normalized_disease = disease.lower().replace("__", "_").strip()
 
-            # Get recommendations using normalized key
             recommendation = RECOMMENDATIONS.get(normalized_disease, {
-                "pathogen": "Anything",
+                "pathogen": "Unknown",
                 "treatment": "No recommendation available.",
                 "prevention": "No recommendation available."
             })
 
-            # Save scan
             scan = Scan.objects.create(
                 user=request.user,
-                image=image,
+                image=image_file,
                 disease_name=normalized_disease,
                 confidence=confidence
             )
@@ -184,24 +209,25 @@ class ScanCropView(APIView):
                 "confidence": confidence,
                 "scan_id": scan.id,
                 "recommendation": recommendation
-            })
+            }, status=201)
 
+        except ValueError as ve:
+            return Response({"error": str(ve)}, status=400)
         except Exception as e:
-            return Response({"error": str(e)}, status=500)
+            logger.exception("Prediction / save failed")
+            return Response({"error": "Internal server error"}, status=500)
 
-
-# ------------------------------
-# RECENT SCANS
-# ------------------------------
 
 class RecentScansView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        scans = Scan.objects.filter(user=request.user).order_by("-created_at")[:10]
+        scans = Scan.objects.filter(user=request.user)\
+                           .order_by("-created_at")[:10]
+
         data = []
         for scan in scans:
-            recommendation = RECOMMENDATIONS.get(scan.disease_name, {
+            rec = RECOMMENDATIONS.get(scan.disease_name, {
                 "treatment": "No recommendation available.",
                 "prevention": "No recommendation available."
             })
@@ -210,15 +236,12 @@ class RecentScansView(APIView):
                 "image": scan.image.url,
                 "disease": scan.disease_name,
                 "confidence": scan.confidence,
-                "date": scan.created_at,
-                "recommendation": recommendation
+                "date": scan.created_at.isoformat(),
+                "recommendation": rec
             })
+
         return Response(data)
 
-
-# ------------------------------
-# DELETE SCAN
-# ------------------------------
 
 class ScanDeleteView(APIView):
     permission_classes = [IsAuthenticated]
@@ -227,43 +250,40 @@ class ScanDeleteView(APIView):
         try:
             scan = Scan.objects.get(id=pk, user=request.user)
             scan.delete()
-            return Response({"message": "Scan deleted successfully"}, status=204)
+            return Response(status=204)
         except Scan.DoesNotExist:
             return Response({"error": "Scan not found or not owned by you"}, status=404)
         except Exception as e:
+            logger.exception("Scan delete failed")
             return Response({"error": str(e)}, status=500)
 
 
-# ------------------------------
-# LEGACY PREDICT (OPTIONAL)
-# ------------------------------
-
+# Optional / legacy endpoint (consider deprecating)
 class PredictDisease(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        image = request.FILES.get('image')
-        if not image:
+        image_file = request.FILES.get("image")
+        if not image_file:
             return Response({"error": "No image provided"}, status=400)
 
         try:
-            disease, confidence = predict(image)
+            disease, confidence = predict(image_file)
 
-            # Get recommendations
-            recommendation = RECOMMENDATIONS.get(disease, {
+            rec = RECOMMENDATIONS.get(disease, {
                 "treatment": "No recommendation available.",
                 "prevention": "No recommendation available."
             })
 
-            # Save Diagnosis & Scan
-            diagnosis = Diagnosis.objects.create(
-                image=image,
+            # Legacy Diagnosis + Scan
+            Diagnosis.objects.create(
+                image=image_file,
                 disease_name=disease,
                 confidence=confidence
             )
             scan = Scan.objects.create(
                 user=request.user,
-                image=image,
+                image=image_file,
                 disease_name=disease,
                 confidence=confidence
             )
@@ -272,8 +292,9 @@ class PredictDisease(APIView):
                 "disease": disease,
                 "confidence": confidence,
                 "scan_id": scan.id,
-                "recommendation": recommendation
-            })
+                "recommendation": rec
+            }, status=201)
 
         except Exception as e:
+            logger.exception("Legacy predict failed")
             return Response({"error": str(e)}, status=500)
