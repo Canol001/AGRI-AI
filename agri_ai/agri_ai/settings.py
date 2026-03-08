@@ -26,7 +26,9 @@ SECRET_KEY = 'django-insecure-ouro1_rf&&k&8zo@428_7#*li-51^u*vn%er)ipxc@u*jwin3q
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    "agri-ai-7fnp.onrender.com",
+]
 
 
 # Application definition
