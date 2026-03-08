@@ -2,7 +2,8 @@ import axios from "axios";
 
 // Create an axios instance
 const API = axios.create({
-  baseURL: "http://127.0.0.1:8000/api/",
+  // baseURL: "http://127.0.0.1:8000/api/",
+  baseURL: "https://agri-ai-7fnp.onrender.com/api/",
   headers: {
     "Content-Type": "application/json",
   },
