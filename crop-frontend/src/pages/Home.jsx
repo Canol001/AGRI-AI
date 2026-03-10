@@ -1,9 +1,14 @@
-import { Leaf, Camera, ShieldCheck, BarChart3, Download, ChevronRight, Star, Users, Award, HelpCircle } from 'lucide-react';
+import { Leaf, Camera, ShieldCheck, BarChart3, Download, ChevronRight, HelpCircle } from 'lucide-react';
 
 export default function Home() {
+  // You can also fetch this dynamically later if needed
+  const apkDownloadUrl = "/app-release.apk"; // assuming it's in /public/app-release.apk
+  const apkFileName = "app-release.apk";
+  const version = "1.0.0"; // change this when you update the app
+
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_30%_70%,rgba(16,185,129,0.12),transparent_50%)] font-sans antialiased">
-      {/* Navbar - Glassmorphism + subtle shadow */}
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50 font-sans antialiased">
+      {/* Navbar */}
       <nav className="sticky top-0 z-50 bg-white/70 backdrop-blur-xl border-b border-green-100/50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 md:h-20">
@@ -18,25 +23,27 @@ export default function Home() {
 
             <div className="hidden md:flex items-center gap-8">
               <a href="#features" className="text-green-800 hover:text-emerald-700 font-medium transition">Features</a>
-              <a href="#how" className="text-green-800 hover:text-emerald-700 font-medium transition">How it Works</a>
+              <a href="#how" className="text-green-800 hover:text-emerald-700 font-medium transition">How It Works</a>
               <a href="#impact" className="text-green-800 hover:text-emerald-700 font-medium transition">Impact</a>
               <a href="#faq" className="text-green-800 hover:text-emerald-700 font-medium transition">FAQ</a>
             </div>
 
             <a
-              href="#download"
-              className="md:hidden bg-emerald-600 text-white px-5 py-2.5 rounded-full font-semibold shadow-md hover:bg-emerald-700 transition text-sm"
+              href={apkDownloadUrl}
+              download={apkFileName}
+              className="hidden md:inline-flex items-center gap-2 bg-emerald-600 text-white px-6 py-2.5 rounded-full font-semibold shadow-md hover:bg-emerald-700 transition text-sm"
             >
-              Download
+              <Download className="h-4 w-4" />
+              Download APK
             </a>
           </div>
         </div>
       </nav>
 
-      {/* Hero - Asymmetric, mobile-first, strong CTA */}
+      {/* Hero */}
       <section className="relative pt-16 pb-24 md:pt-28 md:pb-40 overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_70%,rgba(16,185,129,0.12),transparent_50%)]" />
-        
+
         <div className="max-w-7xl mx-auto px-5 sm:px-8 lg:px-10">
           <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             <div>
@@ -49,12 +56,12 @@ export default function Home() {
 
               <div className="mt-10 flex flex-col sm:flex-row gap-4">
                 <a
-                  href="/app-release.apk"
-                  download
+                  href={apkDownloadUrl}
+                  download={apkFileName}
                   className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-green-600 text-white px-8 py-4 rounded-xl font-semibold text-lg shadow-lg hover:shadow-xl hover:scale-[1.02] transition duration-300"
                 >
                   <Download className="h-5 w-5" />
-                  Download Free
+                  Download APK v{version}
                 </a>
                 <a
                   href="#how"
@@ -64,7 +71,12 @@ export default function Home() {
                 </a>
               </div>
 
-              <div className="mt-8 flex items-center gap-6 text-sm text-gray-600">
+              <div className="mt-8 text-sm text-gray-600">
+                <p>• Android only for now (APK ~49 MB)</p>
+                <p>• No Google Play listing yet — direct install (allow unknown sources)</p>
+              </div>
+
+              <div className="mt-6 flex items-center gap-6 text-sm text-gray-600">
                 <div className="flex -space-x-2">
                   <img src="https://randomuser.me/api/portraits/women/44.jpg" alt="" className="w-10 h-10 rounded-full border-2 border-white shadow" />
                   <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="" className="w-10 h-10 rounded-full border-2 border-white shadow" />
@@ -82,7 +94,6 @@ export default function Home() {
                   className="w-full h-auto object-cover"
                 />
               </div>
-              {/* Floating badge */}
               <div className="absolute -bottom-6 -right-6 md:-bottom-10 md:-right-10 bg-white rounded-2xl p-5 shadow-xl border border-emerald-100">
                 <div className="text-center">
                   <div className="text-3xl font-bold text-emerald-600">98%</div>
@@ -163,30 +174,39 @@ export default function Home() {
             </div>
             <div>
               <div className="text-5xl md:text-6xl font-extrabold mb-4">4.9</div>
-              <p className="text-xl text-emerald-100">App Store rating</p>
+              <p className="text-xl text-emerald-100">User rating</p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Download CTA */}
+      {/* Download CTA - Main prominent section */}
       <section id="download" className="py-24 md:py-32 bg-gradient-to-br from-emerald-600 to-green-700 text-white text-center">
         <div className="max-w-5xl mx-auto px-5">
-          <h2 className="text-4xl md:text-6xl font-extrabold mb-8">Protect Your Harvest Today</h2>
-          <p className="text-xl md:text-2xl mb-12 max-w-3xl mx-auto opacity-90">
-            Download CropGuard now — free, no ads, no subscription. Available on iOS & Android.
+          <h2 className="text-4xl md:text-6xl font-extrabold mb-8">Get CropGuard Now</h2>
+          <p className="text-xl md:text-2xl mb-10 max-w-3xl mx-auto opacity-90">
+            Download the latest version directly — free, no registration, no ads.
           </p>
 
-          <div className="flex flex-col sm:flex-row justify-center gap-6">
-            <a href="https://apps.apple.com/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-3 bg-black text-white px-8 py-5 rounded-2xl font-semibold shadow-2xl hover:scale-105 transition">
-              <svg className="h-10 w-10" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.35.03-1.78-.79-3.29-.79-1.51 0-1.99.77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.06 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.19 2.76zM13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/></svg>
-              App Store
+          <div className="flex flex-col sm:flex-row justify-center gap-6 md:gap-10">
+            <a
+              href={apkDownloadUrl}
+              download={apkFileName}
+              className="inline-flex items-center justify-center gap-3 bg-black/90 backdrop-blur-sm text-white px-10 py-6 rounded-2xl font-bold text-xl shadow-2xl hover:scale-105 hover:shadow-2xl transition duration-300 border border-white/20"
+            >
+              <Download className="h-7 w-7" />
+              Download APK v{version}
             </a>
-            <a href="https://play.google.com/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-3 bg-black text-white px-8 py-5 rounded-2xl font-semibold shadow-2xl hover:scale-105 transition">
-              <svg className="h-10 w-10" viewBox="0 0 24 24" fill="currentColor"><path d="M3,20.5V3.5C3,2.91 3.34,2.39 3.84,2.15L13.69,12L3.84,21.85C3.34,21.6 3,21.09 3,20.5M16.81,15.12L6.05,21.34L14.54,12.85L16.81,15.12M20.16,10.81C20.5,11.08 20.75,11.5 20.75,12C20.75,12.5 20.5,12.92 20.16,13.19L17.89,14.5L15.39,12L17.89,9.5L20.16,10.81M6.05,2.66L16.81,8.88L14.54,11.15L6.05,2.66Z"/></svg>
-              Google Play
-            </a>
+
+            <div className="text-sm opacity-80 mt-4 sm:mt-0 self-center">
+              <p>~49 MB • Android 7.0+</p>
+              <p className="mt-1">Allow "Install from unknown sources" in settings</p>
+            </div>
           </div>
+
+          <p className="mt-10 text-lg opacity-90">
+            iOS version coming soon • Google Play listing in progress
+          </p>
         </div>
       </section>
 
@@ -197,10 +217,10 @@ export default function Home() {
 
           <div className="space-y-8">
             {[
-              { q: "Is CropGuard really free?", a: "Yes — core detection is 100% free. No hidden fees or subscriptions." },
-              { q: "Does it work offline?", a: "Basic models work offline after first download. Full accuracy needs internet." },
-              { q: "Which crops are supported?", a: "Maize, rice, tomatoes, potatoes, beans, cassava, wheat, and 20+ more — expanding monthly." },
-              { q: "How accurate is the AI?", a: "Up to 98% on common diseases (tested on 500k+ images). Always verify critical cases." },
+              { q: "Is CropGuard free?", a: "Yes — completely free with no in-app purchases or ads." },
+              { q: "How do I install the APK?", a: "Download → open file → allow unknown sources → install. You may need to enable this in Settings → Apps → Special app access." },
+              { q: "Does it work offline?", a: "Basic detection works offline after first use. Internet improves accuracy and updates models." },
+              { q: "Which crops are supported?", a: "Maize, rice, tomatoes, potatoes, beans, cassava, wheat, coffee, bananas, and more — list grows monthly." },
             ].map((item, i) => (
               <div key={i} className="bg-emerald-50 rounded-2xl p-6 md:p-8">
                 <h3 className="text-xl md:text-2xl font-semibold text-green-800 flex items-start gap-4">
