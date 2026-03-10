@@ -49,7 +49,7 @@ export default function Home() {
 
               <div className="mt-10 flex flex-col sm:flex-row gap-4">
                 <a
-                  href="#download"
+                  href="/app-release.apk"
                   className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-green-600 text-white px-8 py-4 rounded-xl font-semibold text-lg shadow-lg hover:shadow-xl hover:scale-[1.02] transition duration-300"
                 >
                   <Download className="h-5 w-5" />
