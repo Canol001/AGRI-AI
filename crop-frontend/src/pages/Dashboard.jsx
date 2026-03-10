@@ -369,7 +369,7 @@ export default function Dashboard() {
                 <label className="cursor-pointer">
                   <div className="flex items-center justify-center gap-2 rounded-lg bg-[#3cbe45] px-6 py-2.5 sm:py-3 text-sm font-bold text-white shadow-lg shadow-[#3cbe45]/20 hover:bg-[#35a93d] transition-all">
                     <span className="material-symbols-outlined text-sm">add_a_photo</span>
-                    Upload Image
+                    Files
                   </div>
                   <input
                     type="file"
@@ -384,7 +384,7 @@ export default function Dashboard() {
                   className="flex items-center justify-center gap-2 rounded-lg border border-[#3cbe45]/20 bg-white dark:bg-[#141e14] px-6 py-2.5 sm:py-3 text-sm font-bold text-[#3cbe45] opacity-60 cursor-not-allowed"
                 >
                   <span className="material-symbols-outlined text-sm">camera_alt</span>
-                  Capture Live
+                  Camera
                 </button>
               </div>
 
