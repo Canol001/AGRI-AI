@@ -7,6 +7,7 @@ import Register from "./pages/Register"
 import Dashboard from "./pages/Dashboard"
 import Scan from "./pages/Scan"
 import History from "./pages/History"
+import AdminDashboard from "./pages/Admin"
 
 function App(){
 
@@ -29,6 +30,7 @@ return(
 />
 <Route path="/scan" element={<Scan/>}/>
 <Route path="/history" element={<History/>}/>
+<Route path="/admin" element={<AdminDashboard/>}/>
 
 </Routes>
 
