@@ -17,7 +17,7 @@ export default function Home() {
                 <Leaf className="h-7 w-7 text-white" />
               </div>
               <span className="text-2xl md:text-3xl font-extrabold bg-gradient-to-r from-green-700 to-emerald-700 bg-clip-text text-transparent">
-                CropGuard
+                Agri AI
               </span>
             </div>
 
@@ -90,7 +90,7 @@ export default function Home() {
               <div className="relative z-10 rounded-3xl overflow-hidden shadow-2xl border border-emerald-100/50 bg-white/30 backdrop-blur-sm">
                 <img
                   src="https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&q=80&w=1200"
-                  alt="Farmer using CropGuard app in field"
+                  alt="Farmer using Agri AI app in field"
                   className="w-full h-auto object-cover"
                 />
               </div>
@@ -141,7 +141,7 @@ export default function Home() {
           <div className="grid md:grid-cols-3 gap-12 md:gap-16">
             {[
               { num: "1", title: "Take Photo", desc: "Use your phone camera — no special equipment needed." },
-              { num: "2", title: "Upload", desc: "Send image to CropGuard — works offline too (queued sync)." },
+              { num: "2", title: "Upload", desc: "Send image to Agri AI — works offline too (queued sync)." },
               { num: "3", title: "Get Help", desc: "Instant result + treatment plan in your language." },
             ].map((step, i) => (
               <div key={i} className="relative">
@@ -183,7 +183,7 @@ export default function Home() {
       {/* Download CTA - Main prominent section */}
       <section id="download" className="py-24 md:py-32 bg-gradient-to-br from-emerald-600 to-green-700 text-white text-center">
         <div className="max-w-5xl mx-auto px-5">
-          <h2 className="text-4xl md:text-6xl font-extrabold mb-8">Get CropGuard Now</h2>
+          <h2 className="text-4xl md:text-6xl font-extrabold mb-8">Get Agri AI Now</h2>
           <p className="text-xl md:text-2xl mb-10 max-w-3xl mx-auto opacity-90">
             Download the latest version directly — free, no registration, no ads.
           </p>
@@ -217,7 +217,7 @@ export default function Home() {
 
           <div className="space-y-8">
             {[
-              { q: "Is CropGuard free?", a: "Yes — completely free with no in-app purchases or ads." },
+              { q: "Is Agri AI free?", a: "Yes — completely free with no in-app purchases or ads." },
               { q: "How do I install the APK?", a: "Download → open file → allow unknown sources → install. You may need to enable this in Settings → Apps → Special app access." },
               { q: "Does it work offline?", a: "Basic detection works offline after first use. Internet improves accuracy and updates models." },
               { q: "Which crops are supported?", a: "Maize, rice, tomatoes, potatoes, beans, cassava, wheat, coffee, bananas, and more — list grows monthly." },
@@ -242,7 +242,7 @@ export default function Home() {
               <Leaf className="h-8 w-8 text-white" />
             </div>
           </div>
-          <p className="text-lg">CropGuard © {new Date().getFullYear()}. Helping farmers grow healthier crops.</p>
+          <p className="text-lg">Agri AI © {new Date().getFullYear()}. Helping farmers grow healthier crops.</p>
           <div className="mt-6 flex justify-center gap-8 text-sm">
             <a href="/privacy" className="hover:text-white transition">Privacy</a>
             <a href="/terms" className="hover:text-white transition">Terms</a>
