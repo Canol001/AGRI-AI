@@ -55,10 +55,10 @@ export default function Home() {
               </p>
 
               <div className="mt-10 flex flex-col sm:flex-row gap-4">
+                
                 <a
                   href={apkDownloadUrl}
-                  download={apkFileName}
-                  className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-green-600 text-white px-8 py-4 rounded-xl font-semibold text-lg shadow-lg hover:shadow-xl hover:scale-[1.02] transition duration-300"
+                  className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 to-green-600 text-white backdrop-blur-sm border border-emerald-200 text-emerald-800 px-8 py-4 rounded-xl font-semibold hover:bg-white transition"
                 >
                   <Download className="h-5 w-5" />
                   Download APK v{version}
@@ -82,7 +82,7 @@ export default function Home() {
                   <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="" className="w-10 h-10 rounded-full border-2 border-white shadow" />
                   <img src="https://randomuser.me/api/portraits/women/68.jpg" alt="" className="w-10 h-10 rounded-full border-2 border-white shadow" />
                 </div>
-                <span>Joined by <strong className="text-green-700">12,000+</strong> farmers</span>
+                <span>Joined by <strong className="text-green-700">120+</strong> farmers</span>
               </div>
             </div>
 
