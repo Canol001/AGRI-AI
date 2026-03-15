@@ -3,12 +3,18 @@ import io
 import logging
 import threading
 from typing import Tuple, Dict, Any
+from django.db.models import Avg, Count
+from rest_framework import generics
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from PIL import Image
 
 import torch
 import torch.nn as nn
 from torchvision import models, transforms
+from django.utils import timezone
+from datetime import timedelta
+from .serializers import UserSerializer
 
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
@@ -17,6 +23,7 @@ from rest_framework.authtoken.models import Token
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.permissions import IsAdminUser
 
 from .models import Diagnosis, Scan
 from .recommendations import RECOMMENDATIONS
@@ -136,15 +143,19 @@ class RegisterView(APIView):
                 email=email,
                 password=password
             )
-            token = Token.objects.create(user=user)
+
+            refresh = RefreshToken.for_user(user)
 
             return Response({
+                "success": True,
                 "message": "User created successfully",
-                "token": token.key
+                "refresh": str(refresh),
+                "access": str(refresh.access_token),
+                "username": user.username
             }, status=201)
 
         except Exception as e:
-            logger.exception("User registration failed")
+            logger.exception("Registration failed")
             return Response({"error": str(e)}, status=500)
 
 
@@ -241,6 +252,86 @@ class RecentScansView(APIView):
             })
 
         return Response(data)
+    
+
+class AdminDashboardView(APIView):
+    """
+    Admin-only endpoint showing system-wide statistics.
+    Accessible only to staff/superusers.
+    """
+    permission_classes = [IsAdminUser]  # only is_staff=True users
+
+    def get(self, request):
+        total_users = User.objects.count()
+        total_scans = Scan.objects.count()
+        recent_scans = Scan.objects.filter(
+            created_at__gte=timezone.now() - timedelta(days=30)
+        ).count()
+        avg_confidence = Scan.objects.aggregate(avg=Avg('confidence'))['avg']
+        top_diseases = Scan.objects.values('disease_name').annotate(
+            count=Count('id')
+        ).order_by('-count')[:8]
+
+        active_users_last_30 = Scan.objects.filter(
+            created_at__gte=timezone.now() - timedelta(days=30)
+        ).values('user').distinct().count()
+
+        data = {
+            "system_overview": {
+                "total_users": total_users,
+                "total_scans": total_scans,
+                "recent_scans_30d": recent_scans,
+                "active_users_30d": active_users_last_30,
+                "average_confidence": round(avg_confidence, 2) if avg_confidence else 0,
+            },
+            "top_diseases_last_30_days": [
+                {"disease": item['disease_name'], "count": item['count']}
+                for item in top_diseases
+            ],
+            "admin": {
+                "username": request.user.username,
+                "is_superuser": request.user.is_superuser,
+                "last_login": request.user.last_login.isoformat() if request.user.last_login else None,
+            }
+        }
+
+        return Response(data, status=status.HTTP_200_OK)
+    
+
+class AdminUserListCreateView(generics.ListCreateAPIView):
+    """
+    GET /api/admin/users/    → List all users (admin only)
+    POST /api/admin/users/   → Create new user (admin only)
+    """
+    permission_classes = [IsAdminUser]
+    queryset = User.objects.all().order_by('-date_joined')
+    serializer_class = UserSerializer
+
+    def perform_create(self, serializer):
+        # Auto-set password if provided
+        password = serializer.validated_data.pop('password', None)
+        user = serializer.save()
+        if password:
+            user.set_password(password)
+            user.save()
+
+
+class AdminUserDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    GET /api/admin/users/<id>/    → Get single user
+    PATCH /api/admin/users/<id>/  → Update user (email, is_staff, etc.)
+    DELETE /api/admin/users/<id>/ → Delete user
+    """
+    permission_classes = [IsAdminUser]
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+
+    def perform_update(self, serializer):
+        password = serializer.validated_data.pop('password', None)
+        user = serializer.save()
+        if password:
+            user.set_password(password)
+            user.save()
 
 
 class ScanDeleteView(APIView):

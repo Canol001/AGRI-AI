@@ -16,6 +16,17 @@ class RegisterSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         user = User.objects.create_user(**validated_data)
         return user
+    
+class UserSerializer(serializers.ModelSerializer):
+    scans_count = serializers.IntegerField(read_only=True, source='scans.count')
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'is_staff', 'date_joined', 'scans_count']
+        extra_kwargs = {
+            'password': {'write_only': True, 'required': False},
+            'date_joined': {'read_only': True},
+        }
 
 
 class ScanSerializer(serializers.ModelSerializer):

@@ -27,7 +27,7 @@ SECRET_KEY = 'django-insecure-ouro1_rf&&k&8zo@428_7#*li-51^u*vn%er)ipxc@u*jwin3q
 DEBUG = True
 
 ALLOWED_HOSTS = [
-    "agri-ai-7fnp.onrender.com",
+    "127.0.0.1",
 ]
 
 
@@ -66,6 +66,9 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
 }
 
 CORS_ALLOW_ALL_ORIGINS = True
