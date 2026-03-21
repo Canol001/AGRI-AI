@@ -34,7 +34,8 @@ export default function Login() {
     // Set axios default header for future requests
     API.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
 
-    navigate("/dashboard");
+    // navigate("/dashboard");
+    navigate("/admin");
 
   } catch (err) {
     alert("Login failed");
