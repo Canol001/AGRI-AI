@@ -2,8 +2,9 @@ import axios from "axios";
 
 // Create an axios instance
 const API = axios.create({
-  //baseURL: "http://127.0.0.1:8000/api/",
-  baseURL: "http://199.231.191.165:8000/api/",
+  //baseURL: "http://127.0.0.1:8000/api/", 
+  //baseURL: "http://199.231.191.165:8000/api/",
+  baseURL: "https://199-231-191-165.sslip.io/api/",
   headers: {
     "Content-Type": "application/json",
   },
