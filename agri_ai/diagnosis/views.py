@@ -20,13 +20,16 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from rest_framework import status
 from rest_framework.authtoken.models import Token
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAdminUser
+
+from deep_translator import GoogleTranslator  # ← added for Dholuo translation
 
 from .models import Diagnosis, Scan
 from .recommendations import RECOMMENDATIONS
+
+from .models import Diagnosis, Scan, UserProfile   # ← add UserProfile here
 
 logger = logging.getLogger(__name__)
 
@@ -43,17 +46,13 @@ _model_initialized = False
 
 
 def get_model_and_classes() -> Tuple[nn.Module, list]:
-    """
-    Lazy-load the model and class names (only once, thread-safe).
-    Returns (model, class_names)
-    """
     global _model, _class_names, _model_initialized
 
     if _model_initialized:
         return _model, _class_names
 
     with _model_lock:
-        if _model_initialized:  # double-checked locking
+        if _model_initialized:
             return _model, _class_names
 
         logger.info("Loading plant disease classification model...")
@@ -62,7 +61,7 @@ def get_model_and_classes() -> Tuple[nn.Module, list]:
             checkpoint = torch.load(
                 "diagnosis/ml/model.pth",
                 map_location=DEVICE,
-                weights_only=True  # safer in newer torch versions
+                weights_only=True
             )
 
             _class_names = checkpoint["class_names"]
@@ -119,6 +118,43 @@ def predict(image_file) -> Tuple[str, float]:
     confidence_pct = round(confidence.item() * 100, 2)
 
     return predicted_class, confidence_pct
+
+
+# ────────────────────────────────────────────────
+#  HELPER: Get translated recommendation
+# ────────────────────────────────────────────────
+
+def get_recommendation(disease_key: str, lang: str = 'en') -> Dict[str, str]:
+    rec_en = RECOMMENDATIONS.get(disease_key.lower().strip(), {
+        "pathogen": "Unknown",
+        "treatment": "No recommendation available.",
+        "prevention": "No recommendation available."
+    })
+
+    if lang.lower() in ['luo', 'dholuo']:
+        try:
+            translator = GoogleTranslator(source='en', target='luo')
+            return {
+                "pathogen": translator.translate(rec_en["pathogen"]),
+                "treatment": translator.translate(rec_en["treatment"]),
+                "prevention": translator.translate(rec_en["prevention"]),
+            }
+        except Exception as e:
+            logger.warning(f"Translation to Luo failed: {e}")
+            return rec_en  # fallback to English
+    return rec_en
+
+
+def translate_disease_name(name: str, lang: str = 'en') -> str:
+    if lang.lower() in ['luo', 'dholuo']:
+        try:
+            translator = GoogleTranslator(source='en', target='luo')
+            # Replace underscores with spaces for nicer translation
+            readable = name.replace("__", " ").replace("_", " ")
+            return translator.translate(readable)
+        except Exception:
+            return name.replace("_", " ")
+    return name.replace("_", " ")
 
 
 # ────────────────────────────────────────────────
@@ -196,17 +232,14 @@ class ScanCropView(APIView):
         if not image_file:
             return Response({"error": "No image uploaded"}, status=400)
 
+        lang = request.query_params.get('lang', 'en').lower()
+
         try:
             disease, confidence = predict(image_file)
-
-            # Normalize disease key
             normalized_disease = disease.lower().replace("__", "_").strip()
 
-            recommendation = RECOMMENDATIONS.get(normalized_disease, {
-                "pathogen": "Unknown",
-                "treatment": "No recommendation available.",
-                "prevention": "No recommendation available."
-            })
+            recommendation = get_recommendation(normalized_disease, lang)
+            disease_display = translate_disease_name(normalized_disease, lang)
 
             scan = Scan.objects.create(
                 user=request.user,
@@ -216,10 +249,12 @@ class ScanCropView(APIView):
             )
 
             return Response({
-                "disease": normalized_disease,
+                "disease": disease_display,
+                "original_disease_key": normalized_disease,  # useful for debugging / consistency
                 "confidence": confidence,
                 "scan_id": scan.id,
-                "recommendation": recommendation
+                "recommendation": recommendation,
+                "language": "dholuo" if lang in ['luo', 'dholuo'] else "english"
             }, status=201)
 
         except ValueError as ve:
@@ -233,33 +268,35 @@ class RecentScansView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        lang = request.query_params.get('lang', 'en').lower()
+
         scans = Scan.objects.filter(user=request.user)\
                            .order_by("-created_at")[:10]
 
         data = []
         for scan in scans:
-            rec = RECOMMENDATIONS.get(scan.disease_name, {
-                "treatment": "No recommendation available.",
-                "prevention": "No recommendation available."
-            })
+            recommendation = get_recommendation(scan.disease_name, lang)
+            disease_display = translate_disease_name(scan.disease_name, lang)
+
             data.append({
                 "id": scan.id,
                 "image": scan.image.url,
-                "disease": scan.disease_name,
+                "disease": disease_display,
+                "original_disease_key": scan.disease_name,
                 "confidence": scan.confidence,
                 "date": scan.created_at.isoformat(),
-                "recommendation": rec
+                "recommendation": recommendation
             })
 
         return Response(data)
-    
+
+
+# ────────────────────────────────────────────────
+#  Admin & other views (unchanged)
+# ────────────────────────────────────────────────
 
 class AdminDashboardView(APIView):
-    """
-    Admin-only endpoint showing system-wide statistics.
-    Accessible only to staff/superusers.
-    """
-    permission_classes = [IsAdminUser]  # only is_staff=True users
+    permission_classes = [IsAdminUser]
 
     def get(self, request):
         total_users = User.objects.count()
@@ -296,19 +333,14 @@ class AdminDashboardView(APIView):
         }
 
         return Response(data, status=status.HTTP_200_OK)
-    
+
 
 class AdminUserListCreateView(generics.ListCreateAPIView):
-    """
-    GET /api/admin/users/    → List all users (admin only)
-    POST /api/admin/users/   → Create new user (admin only)
-    """
     permission_classes = [IsAdminUser]
     queryset = User.objects.all().order_by('-date_joined')
     serializer_class = UserSerializer
 
     def perform_create(self, serializer):
-        # Auto-set password if provided
         password = serializer.validated_data.pop('password', None)
         user = serializer.save()
         if password:
@@ -317,11 +349,6 @@ class AdminUserListCreateView(generics.ListCreateAPIView):
 
 
 class AdminUserDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """
-    GET /api/admin/users/<id>/    → Get single user
-    PATCH /api/admin/users/<id>/  → Update user (email, is_staff, etc.)
-    DELETE /api/admin/users/<id>/ → Delete user
-    """
     permission_classes = [IsAdminUser]
     queryset = User.objects.all()
     serializer_class = UserSerializer
@@ -347,9 +374,45 @@ class ScanDeleteView(APIView):
         except Exception as e:
             logger.exception("Scan delete failed")
             return Response({"error": str(e)}, status=500)
+        
+        
+        
+class ProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+
+        return Response({
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "preferred_language": profile.preferred_language,
+            "language_display": profile.language_display,
+        })
+
+    def patch(self, request):
+        user = request.user
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+
+        lang = request.data.get("preferred_language")
+        if lang in ['en', 'sw', 'luo']:
+            profile.preferred_language = lang
+            profile.save()
+            return Response({
+                "message": "Language updated",
+                "preferred_language": profile.preferred_language,
+                "language_display": profile.language_display,
+            }, status=200)
+        else:
+            return Response(
+                {"error": "Invalid language. Use 'en', 'sw', or 'luo'."},
+                status=400
+            )
 
 
-# Optional / legacy endpoint (consider deprecating)
+# Legacy endpoint (kept for backward compatibility)
 class PredictDisease(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -358,32 +421,34 @@ class PredictDisease(APIView):
         if not image_file:
             return Response({"error": "No image provided"}, status=400)
 
+        lang = request.query_params.get('lang', 'en').lower()
+
         try:
             disease, confidence = predict(image_file)
+            normalized_disease = disease.lower().replace("__", "_").strip()
 
-            rec = RECOMMENDATIONS.get(disease, {
-                "treatment": "No recommendation available.",
-                "prevention": "No recommendation available."
-            })
+            recommendation = get_recommendation(normalized_disease, lang)
+            disease_display = translate_disease_name(normalized_disease, lang)
 
-            # Legacy Diagnosis + Scan
             Diagnosis.objects.create(
                 image=image_file,
-                disease_name=disease,
+                disease_name=normalized_disease,
                 confidence=confidence
             )
             scan = Scan.objects.create(
                 user=request.user,
                 image=image_file,
-                disease_name=disease,
+                disease_name=normalized_disease,
                 confidence=confidence
             )
 
             return Response({
-                "disease": disease,
+                "disease": disease_display,
+                "original_disease_key": normalized_disease,
                 "confidence": confidence,
                 "scan_id": scan.id,
-                "recommendation": rec
+                "recommendation": recommendation,
+                "language": "dholuo" if lang in ['luo', 'dholuo'] else "english"
             }, status=201)
 
         except Exception as e:

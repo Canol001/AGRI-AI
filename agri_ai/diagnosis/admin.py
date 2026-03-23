@@ -6,7 +6,9 @@ from django.db.models import Avg, Count
 from django.utils import timezone
 from datetime import timedelta
 
-from .models import Scan
+from .models import Scan, UserProfile
+from django.contrib.auth.models import User
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
 
 @admin.register(Scan)
@@ -140,7 +142,6 @@ class ScanAdmin(admin.ModelAdmin):
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
 
-        # Quick stats
         total_scans = Scan.objects.count()
         recent_30 = Scan.objects.filter(created_at__gte=timezone.now() - timedelta(days=30))
         recent_count = recent_30.count()
@@ -159,14 +160,105 @@ class ScanAdmin(admin.ModelAdmin):
 
         return super().changelist_view(request, extra_context=extra_context)
 
-    # Use custom template to show stats dashboard-style
-    change_list_template = "admin/scan_changelist.html"  # create this template
+    change_list_template = "admin/scan_changelist.html"  # create this template if needed
 
-    # Optional: soft-delete action (if you have is_deleted field)
     actions = ['soft_delete_selected']
 
     def soft_delete_selected(self, request, queryset):
-        updated = queryset.update(is_deleted=True)
+        updated = queryset.update(is_deleted=True)  # assumes you add is_deleted later
         if updated:
             self.message_user(request, f"Successfully soft-deleted {updated} scans.")
     soft_delete_selected.short_description = "Soft delete selected scans"
+
+
+# ────────────────────────────────────────────────
+# UserProfile Admin
+# ────────────────────────────────────────────────
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    """
+    Admin interface for user profiles, focusing on preferred language
+    and future extensibility.
+    """
+    list_display = (
+        'user_link',
+        'preferred_language_display',
+        'language_code',
+    )
+    list_filter = (
+        'preferred_language',
+    )
+    search_fields = (
+        'user__username',
+        'user__email',
+    )
+    list_per_page = 30
+    ordering = ('-user__date_joined',)
+
+    readonly_fields = (
+        'user_link_detail',
+    )
+    fields = (
+        'user_link_detail',
+        'preferred_language',
+    )
+
+    def user_link(self, obj):
+        if obj.user:
+            url = reverse("admin:auth_user_change", args=(obj.user.id,))
+            return format_html('<a href="{}">{}</a>', url, obj.user.username or obj.user.email)
+        return "—"
+    user_link.short_description = "User"
+
+    def user_link_detail(self, obj):
+        if obj.user:
+            url = reverse("admin:auth_user_change", args=(obj.user.id,))
+            scans = obj.user.scans.count()
+            return format_html(
+                '<strong><a href="{}">{}</a></strong><br>'
+                '<small>Email: {} • Scans: {}</small>',
+                url, obj.user.username or obj.user.email,
+                obj.user.email, scans
+            )
+        return "—"
+    user_link_detail.short_description = "User Details"
+
+    def preferred_language_display(self, obj):
+        return obj.language_display
+    preferred_language_display.short_description = "Language"
+    preferred_language_display.admin_order_field = 'preferred_language'
+
+    def language_code(self, obj):
+        return obj.preferred_language.upper()
+    language_code.short_description = "Code"
+
+
+# ────────────────────────────────────────────────
+# Enhance default User admin with language preference
+# ────────────────────────────────────────────────
+
+# IMPORTANT: Unregister the default User admin first
+admin.site.unregister(User)
+
+@admin.register(User)
+class CustomUserAdmin(BaseUserAdmin):
+    list_display = (
+        'username',
+        'email',
+        'get_preferred_language',
+        'date_joined',
+        'is_staff',
+        'is_active',
+    )
+    list_filter = ('is_active', 'is_staff', 'date_joined', 'profile__preferred_language')
+    search_fields = ('username', 'email')
+    ordering = ('-date_joined',)
+
+    def get_preferred_language(self, obj):
+        try:
+            profile = obj.profile
+            return profile.preferred_language.upper()
+        except (AttributeError, UserProfile.DoesNotExist):
+            return "—"
+    get_preferred_language.short_description = "Language"
+    get_preferred_language.admin_order_field = 'profile__preferred_language'

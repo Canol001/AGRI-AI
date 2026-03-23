@@ -13,6 +13,7 @@ urlpatterns = [
     path('recent-scans/', RecentScansView.as_view()),
     path('scans/<int:pk>/', ScanDeleteView.as_view(), name='scan-delete'),
     path('administrator/', AdminDashboardView.as_view(), name='admin-overview'),
+    path('profile/', ProfileView.as_view(), name='profile'),
     # NEW: Admin user management
     path('admin/users/', AdminUserListCreateView.as_view(), name='admin-users-list'),
     path('admin/users/<int:pk>/', AdminUserDetailView.as_view(), name='admin-user-detail'),
