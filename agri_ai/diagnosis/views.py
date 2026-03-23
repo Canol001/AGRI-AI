@@ -3,33 +3,29 @@ import io
 import logging
 import threading
 from typing import Tuple, Dict, Any
+from datetime import timedelta
+
 from django.db.models import Avg, Count
-from rest_framework import generics
+from django.utils import timezone
+from django.contrib.auth import authenticate
+from django.contrib.auth.models import User
+
+from rest_framework import generics, status
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.authtoken.models import Token
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from PIL import Image
-
 import torch
 import torch.nn as nn
 from torchvision import models, transforms
-from django.utils import timezone
-from datetime import timedelta
+from deep_translator import GoogleTranslator
+
+from .models import Diagnosis, Scan, UserProfile
 from .serializers import UserSerializer
-
-from django.contrib.auth import authenticate
-from django.contrib.auth.models import User
-from rest_framework import status
-from rest_framework.authtoken.models import Token
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
-from rest_framework.response import Response
-from rest_framework.views import APIView
-
-from deep_translator import GoogleTranslator  # ← added for Dholuo translation
-
-from .models import Diagnosis, Scan
 from .recommendations import RECOMMENDATIONS
-
-from .models import Diagnosis, Scan, UserProfile   # ← add UserProfile here
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +39,6 @@ _model = None
 _class_names = None
 _model_lock = threading.Lock()
 _model_initialized = False
-
 
 def get_model_and_classes() -> Tuple[nn.Module, list]:
     global _model, _class_names, _model_initialized
@@ -87,7 +82,79 @@ def get_model_and_classes() -> Tuple[nn.Module, list]:
 
 
 # ────────────────────────────────────────────────
-#  PREDICTION FUNCTION
+#  LANGUAGE HELPERS
+# ────────────────────────────────────────────────
+
+# Pre-fetch supported languages to avoid crashes
+try:
+    SUPPORTED_LANGS = GoogleTranslator().get_supported_languages(as_dict=True)
+except Exception:
+    SUPPORTED_LANGS = {'english': 'en', 'swahili': 'sw'}
+
+def get_user_language(request) -> str:
+    """
+    Returns the language code.
+    Priority: query param → saved profile → default 'en'
+    """
+    lang_from_query = request.query_params.get('lang')
+    if lang_from_query:
+        lang = lang_from_query.lower()
+        if lang in ['en', 'sw', 'luo', 'dholuo']:
+            return 'luo' if lang in ['luo', 'dholuo'] else lang
+
+    try:
+        if request.user.is_authenticated:
+            profile = request.user.profile
+            saved_lang = profile.preferred_language
+            if saved_lang in ['en', 'sw', 'luo']:
+                return saved_lang
+    except (AttributeError, UserProfile.DoesNotExist):
+        pass
+
+    return 'en'
+
+def safe_translate(text: str, target_lang: str) -> str:
+    """Helper to translate safely, falling back to English on error."""
+    if not text or target_lang == 'en':
+        return text
+    
+    # Map 'luo' to 'ach' (Acholi) or similar if 'luo' isn't in the dict, 
+    # but based on your logs, 'luo' is explicitly failing.
+    # We check the SUPPORTED_LANGS dict values.
+    if target_lang not in SUPPORTED_LANGS.values():
+        return text
+
+    try:
+        return GoogleTranslator(source='en', target=target_lang).translate(text)
+    except Exception as e:
+        logger.error(f"Translation failed for {target_lang}: {e}")
+        return text
+
+def get_recommendation(disease_key: str, lang: str = 'en') -> Dict[str, str]:
+    rec_en = RECOMMENDATIONS.get(disease_key.lower().strip(), {
+        "pathogen": "Unknown",
+        "treatment": "No recommendation available.",
+        "prevention": "No recommendation available."
+    })
+
+    if lang == 'en':
+        return rec_en
+
+    return {
+        "pathogen": safe_translate(rec_en["pathogen"], lang),
+        "treatment": safe_translate(rec_en["treatment"], lang),
+        "prevention": safe_translate(rec_en["prevention"], lang),
+    }
+
+def translate_disease_name(name: str, lang: str = 'en') -> str:
+    readable = name.replace("__", " ").replace("_", " ").title()
+    if lang == 'en':
+        return readable
+    return safe_translate(readable, lang)
+
+
+# ────────────────────────────────────────────────
+#  PREDICTION LOGIC
 # ────────────────────────────────────────────────
 
 def predict(image_file) -> Tuple[str, float]:
@@ -121,43 +188,6 @@ def predict(image_file) -> Tuple[str, float]:
 
 
 # ────────────────────────────────────────────────
-#  HELPER: Get translated recommendation
-# ────────────────────────────────────────────────
-
-def get_recommendation(disease_key: str, lang: str = 'en') -> Dict[str, str]:
-    rec_en = RECOMMENDATIONS.get(disease_key.lower().strip(), {
-        "pathogen": "Unknown",
-        "treatment": "No recommendation available.",
-        "prevention": "No recommendation available."
-    })
-
-    if lang.lower() in ['luo', 'dholuo']:
-        try:
-            translator = GoogleTranslator(source='en', target='luo')
-            return {
-                "pathogen": translator.translate(rec_en["pathogen"]),
-                "treatment": translator.translate(rec_en["treatment"]),
-                "prevention": translator.translate(rec_en["prevention"]),
-            }
-        except Exception as e:
-            logger.warning(f"Translation to Luo failed: {e}")
-            return rec_en  # fallback to English
-    return rec_en
-
-
-def translate_disease_name(name: str, lang: str = 'en') -> str:
-    if lang.lower() in ['luo', 'dholuo']:
-        try:
-            translator = GoogleTranslator(source='en', target='luo')
-            # Replace underscores with spaces for nicer translation
-            readable = name.replace("__", " ").replace("_", " ")
-            return translator.translate(readable)
-        except Exception:
-            return name.replace("_", " ")
-    return name.replace("_", " ")
-
-
-# ────────────────────────────────────────────────
 #  API VIEWS
 # ────────────────────────────────────────────────
 
@@ -174,14 +204,8 @@ class RegisterView(APIView):
             return Response({"error": "Username already exists"}, status=400)
 
         try:
-            user = User.objects.create_user(
-                username=username,
-                email=email,
-                password=password
-            )
-
+            user = User.objects.create_user(username=username, email=email, password=password)
             refresh = RefreshToken.for_user(user)
-
             return Response({
                 "success": True,
                 "message": "User created successfully",
@@ -189,7 +213,6 @@ class RegisterView(APIView):
                 "access": str(refresh.access_token),
                 "username": user.username
             }, status=201)
-
         except Exception as e:
             logger.exception("Registration failed")
             return Response({"error": str(e)}, status=500)
@@ -199,14 +222,12 @@ class LoginView(APIView):
     def post(self, request):
         username = request.data.get("username")
         password = request.data.get("password")
-
         user = authenticate(username=username, password=password)
 
         if user is None:
             return Response({"error": "Invalid credentials"}, status=401)
 
         token, _ = Token.objects.get_or_create(user=user)
-
         return Response({
             "token": token.key,
             "username": user.username
@@ -232,7 +253,7 @@ class ScanCropView(APIView):
         if not image_file:
             return Response({"error": "No image uploaded"}, status=400)
 
-        lang = request.query_params.get('lang', 'en').lower()
+        lang = get_user_language(request)
 
         try:
             disease, confidence = predict(image_file)
@@ -250,11 +271,11 @@ class ScanCropView(APIView):
 
             return Response({
                 "disease": disease_display,
-                "original_disease_key": normalized_disease,  # useful for debugging / consistency
+                "original_disease_key": normalized_disease,
                 "confidence": confidence,
                 "scan_id": scan.id,
                 "recommendation": recommendation,
-                "language": "dholuo" if lang in ['luo', 'dholuo'] else "english"
+                "language_used": lang
             }, status=201)
 
         except ValueError as ve:
@@ -268,10 +289,8 @@ class RecentScansView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        lang = request.query_params.get('lang', 'en').lower()
-
-        scans = Scan.objects.filter(user=request.user)\
-                           .order_by("-created_at")[:10]
+        lang = get_user_language(request)
+        scans = Scan.objects.filter(user=request.user).order_by("-created_at")[:10]
 
         data = []
         for scan in scans:
@@ -280,20 +299,58 @@ class RecentScansView(APIView):
 
             data.append({
                 "id": scan.id,
-                "image": scan.image.url,
+                "image": scan.image.url if scan.image else None,
                 "disease": disease_display,
                 "original_disease_key": scan.disease_name,
                 "confidence": scan.confidence,
                 "date": scan.created_at.isoformat(),
                 "recommendation": recommendation
             })
-
         return Response(data)
 
 
-# ────────────────────────────────────────────────
-#  Admin & other views (unchanged)
-# ────────────────────────────────────────────────
+class ProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        return Response({
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "preferred_language": profile.preferred_language,
+            "language_display": profile.language_display,
+        })
+
+    def patch(self, request):
+        user = request.user
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        lang = request.data.get("preferred_language")
+        
+        if lang in ['en', 'sw', 'luo']:
+            profile.preferred_language = lang
+            profile.save()
+            return Response({
+                "message": "Language updated",
+                "preferred_language": profile.preferred_language,
+                "language_display": profile.language_display,
+            }, status=200)
+        
+        return Response({"error": "Invalid language. Use 'en', 'sw', or 'luo'."}, status=400)
+
+
+class ScanDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk):
+        try:
+            scan = Scan.objects.get(id=pk, user=request.user)
+            scan.delete()
+            return Response(status=204)
+        except Scan.DoesNotExist:
+            return Response({"error": "Scan not found"}, status=404)
+
 
 class AdminDashboardView(APIView):
     permission_classes = [IsAdminUser]
@@ -301,38 +358,25 @@ class AdminDashboardView(APIView):
     def get(self, request):
         total_users = User.objects.count()
         total_scans = Scan.objects.count()
-        recent_scans = Scan.objects.filter(
-            created_at__gte=timezone.now() - timedelta(days=30)
-        ).count()
+        recent_scans = Scan.objects.filter(created_at__gte=timezone.now() - timedelta(days=30)).count()
+        
         avg_confidence = Scan.objects.aggregate(avg=Avg('confidence'))['avg']
-        top_diseases = Scan.objects.values('disease_name').annotate(
-            count=Count('id')
-        ).order_by('-count')[:8]
-
-        active_users_last_30 = Scan.objects.filter(
-            created_at__gte=timezone.now() - timedelta(days=30)
-        ).values('user').distinct().count()
+        top_diseases = Scan.objects.values('disease_name').annotate(count=Count('id')).order_by('-count')[:8]
 
         data = {
             "system_overview": {
                 "total_users": total_users,
                 "total_scans": total_scans,
                 "recent_scans_30d": recent_scans,
-                "active_users_30d": active_users_last_30,
                 "average_confidence": round(avg_confidence, 2) if avg_confidence else 0,
             },
             "top_diseases_last_30_days": [
                 {"disease": item['disease_name'], "count": item['count']}
                 for item in top_diseases
             ],
-            "admin": {
-                "username": request.user.username,
-                "is_superuser": request.user.is_superuser,
-                "last_login": request.user.last_login.isoformat() if request.user.last_login else None,
-            }
+            "admin": {"username": request.user.username}
         }
-
-        return Response(data, status=status.HTTP_200_OK)
+        return Response(data)
 
 
 class AdminUserListCreateView(generics.ListCreateAPIView):
@@ -361,58 +405,6 @@ class AdminUserDetailView(generics.RetrieveUpdateDestroyAPIView):
             user.save()
 
 
-class ScanDeleteView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def delete(self, request, pk):
-        try:
-            scan = Scan.objects.get(id=pk, user=request.user)
-            scan.delete()
-            return Response(status=204)
-        except Scan.DoesNotExist:
-            return Response({"error": "Scan not found or not owned by you"}, status=404)
-        except Exception as e:
-            logger.exception("Scan delete failed")
-            return Response({"error": str(e)}, status=500)
-        
-        
-        
-class ProfileView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        user = request.user
-        profile, _ = UserProfile.objects.get_or_create(user=user)
-
-        return Response({
-            "id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "preferred_language": profile.preferred_language,
-            "language_display": profile.language_display,
-        })
-
-    def patch(self, request):
-        user = request.user
-        profile, _ = UserProfile.objects.get_or_create(user=user)
-
-        lang = request.data.get("preferred_language")
-        if lang in ['en', 'sw', 'luo']:
-            profile.preferred_language = lang
-            profile.save()
-            return Response({
-                "message": "Language updated",
-                "preferred_language": profile.preferred_language,
-                "language_display": profile.language_display,
-            }, status=200)
-        else:
-            return Response(
-                {"error": "Invalid language. Use 'en', 'sw', or 'luo'."},
-                status=400
-            )
-
-
-# Legacy endpoint (kept for backward compatibility)
 class PredictDisease(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -421,7 +413,7 @@ class PredictDisease(APIView):
         if not image_file:
             return Response({"error": "No image provided"}, status=400)
 
-        lang = request.query_params.get('lang', 'en').lower()
+        lang = get_user_language(request)
 
         try:
             disease, confidence = predict(image_file)
@@ -448,7 +440,7 @@ class PredictDisease(APIView):
                 "confidence": confidence,
                 "scan_id": scan.id,
                 "recommendation": recommendation,
-                "language": "dholuo" if lang in ['luo', 'dholuo'] else "english"
+                "language_used": lang
             }, status=201)
 
         except Exception as e:
