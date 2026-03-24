@@ -23,7 +23,8 @@ class AgriAIApp extends StatelessWidget {
       builder: (context) {
         // ✅ Run version check after first frame
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          CheckUpdateService.checkForUpdate(context);
+          // CheckUpdateService.checkForUpdate(context);
+          checkForUpdate(context);
         });
 
         return MaterialApp(

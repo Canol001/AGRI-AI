@@ -160,7 +160,7 @@ class ScanAdmin(admin.ModelAdmin):
 
         return super().changelist_view(request, extra_context=extra_context)
 
-    change_list_template = "admin/scan_changelist.html"  # create this template if needed
+    #change_list_template = "admin/scan_changelist.html"  # create this template if needed
 
     actions = ['soft_delete_selected']
 
