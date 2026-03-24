@@ -34,6 +34,7 @@ return(
 <Route path="/admin" element={<AdminDashboard/>}/>
 <Route path="/settings" element={<Settings/>}/>
 
+
 </Routes>
 
 </BrowserRouter>

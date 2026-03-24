@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import '../services/api_service.dart'; // Adjust the path if necessary
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -8,313 +10,458 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  String _selectedLanguage = 'English'; // Default – replace with persistence later
+  String _userName = "User";
+  String _selectedLanguageCode = 'en';
 
   final List<Map<String, String>> _languages = [
     {'code': 'en', 'name': 'English', 'native': 'English'},
     {'code': 'sw', 'name': 'Swahili', 'native': 'Kiswahili'},
-    {'code': 'luo', 'name': 'Luo', 'native': 'Dholuo'},
+    // {'code': 'luo', 'name': 'Luo', 'native': 'Dholuo'},
   ];
+
+  bool _isLoading = true;
+  bool _isSavingLanguage = false;
+  bool _isChangingPassword = false;
+
+  String? _languageMessage;
+  String? _passwordMessage;
+  String? _passwordError;
+
+  final _currentPasswordController = TextEditingController();
+  final _newPasswordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      final dashboardRes = await ApiService.authenticatedGet('dashboard/');
+      final profileRes = await ApiService.authenticatedGet('profile/');
+
+      if (dashboardRes.statusCode == 200) {
+        final data = jsonDecode(dashboardRes.body);
+        setState(() => _userName = data['user'] ?? 'User');
+      }
+
+      if (profileRes.statusCode == 200) {
+        final data = jsonDecode(profileRes.body);
+        setState(() {
+          _selectedLanguageCode = data['preferred_language'] ?? 'en';
+        });
+      }
+    } catch (e) {
+      print('Error loading settings: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to load settings')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _saveLanguage() async {
+    setState(() => _isSavingLanguage = true);
+    _languageMessage = null;
+
+    try {
+      final response = await ApiService.authenticatedPatch(
+        'profile/',
+        body: {'preferred_language': _selectedLanguageCode},
+      );
+
+      if (response.statusCode == 200) {
+        setState(() => _languageMessage = 'Language preference saved successfully!');
+      } else {
+        setState(() => _languageMessage = 'Failed to save language');
+      }
+    } catch (e) {
+      setState(() => _languageMessage = 'Network error');
+    } finally {
+      setState(() => _isSavingLanguage = false);
+    }
+  }
+
+  Future<void> _changePassword() async {
+    final current = _currentPasswordController.text.trim();
+    final newPass = _newPasswordController.text.trim();
+    final confirm = _confirmPasswordController.text.trim();
+
+    if (newPass != confirm) {
+      setState(() => _passwordError = "New passwords do not match");
+      return;
+    }
+    if (newPass.length < 8) {
+      setState(() => _passwordError = "Password must be at least 8 characters");
+      return;
+    }
+
+    setState(() {
+      _isChangingPassword = true;
+      _passwordError = null;
+      _passwordMessage = null;
+    });
+
+    try {
+      final response = await ApiService.authenticatedPost(
+        'change-password/',
+        body: {'current_password': current, 'new_password': newPass},
+      );
+
+      if (response.statusCode == 200) {
+        setState(() {
+          _passwordMessage = "Password changed successfully!";
+          _currentPasswordController.clear();
+          _newPasswordController.clear();
+          _confirmPasswordController.clear();
+        });
+      } else {
+        final data = jsonDecode(response.body);
+        setState(() => _passwordError = data['detail'] ?? "Failed to change password");
+      }
+    } catch (e) {
+      setState(() => _passwordError = "Network error. Please try again.");
+    } finally {
+      setState(() => _isChangingPassword = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator(color: Color(0xFF3CBE45))),
+      );
+    }
 
     return Scaffold(
-      backgroundColor: isDark ? null : Colors.grey.shade50,
-      appBar: AppBar(
-        title: const Text(
-          'Settings',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.4,
-          ),
-        ),
-        centerTitle: true,
-        elevation: 1,
-        shadowColor: Colors.black.withOpacity(0.08),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout_rounded),
-            tooltip: 'Sign out',
-            onPressed: () {
-              // Same logout confirmation dialog as in dashboard
-              showDialog(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('Sign Out'),
-                  content: const Text('Are you sure you want to sign out?'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('Cancel'),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        // TODO: Call your real logout logic here
-                        // Example: await ApiService.logout();
-                        Navigator.pushReplacementNamed(context, '/login');
-                      },
-                      child: Text(
-                        'Sign Out',
-                        style: TextStyle(color: Colors.red.shade700),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
+      backgroundColor: isDark ? Colors.grey[950] : const Color(0xFFF6F8F6),
+appBar: AppBar(
+  title: const Text(
+    'Settings',
+    style: TextStyle(
+      fontWeight: FontWeight.w600,
+      color: Colors.white, // Make the title text white
+    ),
+  ),
+  centerTitle: true,
+  elevation: 0,
+  backgroundColor: Colors.green, // Green AppBar
+  iconTheme: const IconThemeData(
+    color: Colors.white, // Make icons white
+  ),
+  actions: [
+    IconButton(
+      icon: const Icon(Icons.logout_rounded),
+      onPressed: () => _showLogoutDialog(context),
+      color: Colors.white, // ensure logout icon is white
+    ),
+  ],
+),
 
-      // ── Own dedicated drawer for Settings screen ───────────────────────
-      drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
+      // Original Sidebar (Drawer)
+      drawer: _buildDrawer(context),
+
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            DrawerHeader(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Colors.green.shade800, Colors.green.shade600],
-                ),
+            Text(
+              'App Preferences',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF3CBE45),
               ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Icon(Icons.agriculture_rounded, size: 48, color: Colors.white),
-                  SizedBox(height: 12),
-                  Text(
-                    'Agri AI',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Customize your Agri AI experience',
+              style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[700], fontSize: 15),
+            ),
+            const SizedBox(height: 32),
+
+            // Language Selection
+            const Text('Preferred Language', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 16),
+
+            ..._languages.map((lang) {
+              final isSelected = _selectedLanguageCode == lang['code'];
+              return GestureDetector(
+                onTap: () => setState(() => _selectedLanguageCode = lang['code']!),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.grey[900] : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSelected ? const Color(0xFF3CBE45) : Colors.transparent,
+                      width: 2.5,
                     ),
                   ),
-                  Text(
-                    'Crop Health Assistant',
-                    style: TextStyle(color: Colors.white70),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: isSelected ? const Color(0xFF3CBE45) : Colors.grey,
+                            width: 2,
+                          ),
+                        ),
+                        child: isSelected
+                            ? const Icon(Icons.check, color: Color(0xFF3CBE45), size: 20)
+                            : null,
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(lang['native']!, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                            Text(lang['name']!, style: TextStyle(color: Colors.grey[600], fontSize: 14)),
+                          ],
+                        ),
+                      ),
+                      if (isSelected)
+                        const Icon(Icons.check_circle, color: Color(0xFF3CBE45), size: 28),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isSavingLanguage ? null : _saveLanguage,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF3CBE45),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ),
+                child: _isSavingLanguage
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text('Save Language Preference', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              ),
+            ),
+            if (_languageMessage != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  _languageMessage!,
+                  style: TextStyle(
+                    color: _languageMessage!.contains('success') ? const Color(0xFF3CBE45) : Colors.red,
+                  ),
+                ),
+              ),
+
+            const SizedBox(height: 40),
+
+            // Change Password Card
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.grey[900] : Colors.white,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.lock_outline, color: Color(0xFF3CBE45), size: 28),
+                      SizedBox(width: 12),
+                      Text('Change Password', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+
+                  _buildTextField('Current Password', _currentPasswordController, obscure: true),
+                  const SizedBox(height: 16),
+                  _buildTextField('New Password', _newPasswordController, obscure: true),
+                  const SizedBox(height: 16),
+                  _buildTextField('Confirm New Password', _confirmPasswordController, obscure: true),
+
+                  if (_passwordError != null)
+                    Padding(padding: const EdgeInsets.only(top: 12), child: Text(_passwordError!, style: const TextStyle(color: Colors.red))),
+                  if (_passwordMessage != null)
+                    Padding(padding: const EdgeInsets.only(top: 12), child: Text(_passwordMessage!, style: const TextStyle(color: Color(0xFF3CBE45)))),
+
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: _isChangingPassword ? null : _changePassword,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF3CBE45),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      child: _isChangingPassword
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text('Update Password', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                    ),
                   ),
                 ],
               ),
             ),
 
-            ListTile(
-              leading: const Icon(Icons.dashboard_rounded),
-              title: const Text('Dashboard'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushReplacementNamed(context, '/dashboard');
-              },
-            ),
+            const SizedBox(height: 40),
 
-            ListTile(
-              leading: const Icon(Icons.history_rounded),
-              title: const Text('Scan History'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushReplacementNamed(context, '/history');
-              },
-            ),
+            // Other Settings Tiles
+            _buildSettingsTile(Icons.notifications_outlined, 'Notifications', 'Push notifications & alerts'),
+            _buildSettingsTile(Icons.dark_mode_outlined, 'Appearance', 'Light / Dark mode'),
+            _buildSettingsTile(Icons.storage_outlined, 'Data & Storage', 'Offline mode & cache'),
 
-            ListTile(
-              leading: const Icon(Icons.bar_chart_rounded),
-              title: const Text('Analytics'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushReplacementNamed(context, '/analytics');
-              },
-            ),
-
-            const Divider(height: 24),
-
-            ListTile(
-              leading: const Icon(Icons.settings_outlined),
-              title: const Text('Settings'),
-              selected: true,
-              selectedTileColor: Colors.green.shade50,
-              selectedColor: Colors.green.shade800,
-              onTap: () => Navigator.pop(context), // stay on settings
+            const SizedBox(height: 60),
+            Center(
+              child: Text(
+                'Agri AI • Version 1.0.0 • © 2026',
+                style: TextStyle(color: isDark ? Colors.grey[600] : Colors.grey[500]),
+              ),
             ),
           ],
         ),
       ),
+    );
+  }
 
-      body: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(vertical: 8),
+  Widget _buildTextField(String label, TextEditingController controller, {bool obscure = false}) {
+    return TextField(
+      controller: controller,
+      obscureText: obscure,
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+        filled: true,
+        fillColor: Colors.grey.withOpacity(0.05),
+      ),
+    );
+  }
+
+  Widget _buildSettingsTile(IconData icon, String title, String subtitle) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        leading: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF3CBE45).withOpacity(0.1),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(icon, color: const Color(0xFF3CBE45), size: 28),
+        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Coming soon')),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDrawer(BuildContext context) {
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-            child: Column(
+          DrawerHeader(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF3CBE45), Color(0xFF2E9B38)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            child: const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Text(
-                  'App Preferences',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: Colors.green.shade900,
-                      ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Customize your Agri AI experience',
-                  style: TextStyle(
-                    color: Colors.grey.shade700,
-                    fontSize: 14,
-                  ),
-                ),
+                Icon(Icons.agriculture_rounded, size: 52, color: Colors.white),
+                SizedBox(height: 12),
+                Text('Agri AI', style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)),
+                Text('Crop Health Assistant', style: TextStyle(color: Colors.white70)),
               ],
             ),
           ),
-
-          const Divider(height: 24),
-
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-            child: Text(
-              'Language',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.green.shade800,
-                  ),
-            ),
-          ),
-
-          ..._languages.map((lang) {
-            final isSelected = _selectedLanguage == lang['name'];
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-              child: Card(
-                elevation: isSelected ? 2 : 0,
-                color: isSelected ? Colors.green.shade50 : null,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: ListTile(
-                  leading: Icon(
-                    isSelected ? Icons.check_circle : Icons.language_rounded,
-                    color: isSelected ? Colors.green.shade700 : Colors.grey.shade500,
-                  ),
-                  title: Text(
-                    lang['native']!,
-                    style: TextStyle(
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                      color: isSelected ? Colors.green.shade900 : Colors.black87,
-                    ),
-                  ),
-                  subtitle: Text(
-                    lang['name']!,
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 13,
-                    ),
-                  ),
-                  trailing: isSelected
-                      ? Icon(Icons.check_circle, color: Colors.green.shade600)
-                      : null,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  onTap: () {
-                    setState(() {
-                      _selectedLanguage = lang['name']!;
-                    });
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Language set to ${lang['native']}'),
-                        backgroundColor: Colors.green.shade700,
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            );
-          }).toList(),
-
-          const Divider(height: 32),
-
-          _buildSettingsCard(
-            icon: Icons.notifications_outlined,
-            title: 'Notifications',
-            subtitle: 'Push notifications & alerts',
+          ListTile(
+            leading: const Icon(Icons.dashboard_rounded),
+            title: const Text('Dashboard'),
             onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Notifications settings – coming soon')),
-              );
+              Navigator.pop(context);
+              Navigator.pushReplacementNamed(context, '/dashboard');
             },
           ),
-
-          _buildSettingsCard(
-            icon: Icons.dark_mode_outlined,
-            title: 'Appearance',
-            subtitle: 'Light / Dark mode',
+          ListTile(
+            leading: const Icon(Icons.history_rounded),
+            title: const Text('Scan History'),
             onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Theme settings – coming soon')),
-              );
+              Navigator.pop(context);
+              Navigator.pushReplacementNamed(context, '/history');
             },
           ),
-
-          _buildSettingsCard(
-            icon: Icons.storage_outlined,
-            title: 'Data & Storage',
-            subtitle: 'Offline mode & cache',
+          ListTile(
+            leading: const Icon(Icons.bar_chart_rounded),
+            title: const Text('Analytics'),
             onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Data settings – coming soon')),
-              );
+              Navigator.pop(context);
+              Navigator.pushReplacementNamed(context, '/analytics');
             },
           ),
-
-          const SizedBox(height: 32),
-
-          Center(
-            child: Text(
-              'Agri AI • Version 1.0.0 • © 2025',
-              style: TextStyle(
-                color: Colors.grey.shade500,
-                fontSize: 13,
-              ),
-            ),
+          const Divider(height: 30),
+          ListTile(
+            leading: const Icon(Icons.settings),
+            title: const Text('Settings'),
+            selected: true,
+            selectedColor: const Color(0xFF3CBE45),
+            onTap: () => Navigator.pop(context),
           ),
-
-          const SizedBox(height: 60),
         ],
       ),
     );
   }
 
-  Widget _buildSettingsCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Card(
-        elevation: 1,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: ListTile(
-          leading: Icon(icon, color: Colors.green.shade700, size: 28),
-          title: Text(
-            title,
-            style: const TextStyle(fontWeight: FontWeight.w500),
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sign Out'),
+        content: const Text('Are you sure you want to sign out?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await ApiService.logout();
+              if (mounted) Navigator.pushReplacementNamed(context, '/login');
+            },
+            child: const Text('Sign Out', style: TextStyle(color: Colors.red)),
           ),
-          subtitle: Text(subtitle),
-          trailing: const Icon(Icons.chevron_right_rounded),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          onTap: onTap,
-        ),
+        ],
       ),
     );
   }

@@ -121,6 +121,30 @@ class ApiService {
     }
   }
 
+
+
+
+  // Add this method inside ApiService class
+
+static Future<http.Response> authenticatedPatch(
+  String endpoint, {
+  required Map<String, dynamic> body,
+}) async {
+  final url = Uri.parse('$baseUrl$endpoint');
+  final headers = await _getAuthHeaders();
+
+  final response = await http.patch(
+    url,
+    headers: headers,
+    body: jsonEncode(body),
+  );
+
+  print('PATCH $endpoint → ${response.statusCode}');
+  return response;
+}
+
+
+
   // ────────────────────────────────────────────────
   //  AUTH HELPERS
   // ────────────────────────────────────────────────
