@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard"
 import Scan from "./pages/Scan"
 import History from "./pages/History"
 import AdminDashboard from "./pages/Admin"
+import Settings from "./pages/Settings"
 
 function App(){
 
@@ -31,6 +32,7 @@ return(
 <Route path="/scan" element={<Scan/>}/>
 <Route path="/history" element={<History/>}/>
 <Route path="/admin" element={<AdminDashboard/>}/>
+<Route path="/settings" element={<Settings/>}/>
 
 </Routes>
 

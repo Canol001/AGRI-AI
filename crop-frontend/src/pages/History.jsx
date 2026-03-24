@@ -187,15 +187,15 @@ export default function History() {
               <span className="material-symbols-outlined">history</span>
               <span className="text-sm font-medium">History</span>
             </a>
-            <a
+            {/* <a
               href="#"
               className="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 dark:text-slate-400 hover:bg-[#3cbe45]/5 transition-colors"
             >
               <span className="material-symbols-outlined">analytics</span>
               <span className="text-sm font-medium">Reports</span>
-            </a>
+            </a> */}
             <a
-              href="#"
+              href="/settings"
               className="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 dark:text-slate-400 hover:bg-[#3cbe45]/5 transition-colors"
             >
               <span className="material-symbols-outlined">settings</span>
@@ -296,13 +296,15 @@ export default function History() {
                 >
                   <div className="relative aspect-[4/3] bg-slate-100 dark:bg-slate-900">
                     <img
-                      src={`http://199.231.191.165:8000${scan.image}`}
+                      src={`${import.meta.env.VITE_API_BASE_URL}${scan.image}`}
                       alt={scan.disease || "Crop scan"}
                       className="h-full w-full object-cover"
                       onError={(e) => {
-                        e.target.src = "https://images.unsplash.com/photo-1597843786411-a7fa8ed2f1c4?w=800";
+                        e.currentTarget.src =
+                          "https://tse4.mm.bing.net/th/id/OIP.EMOozEnvhQmAU0Mw4NioSwHaHa?rs=1&pid=ImgDetMain&o=7&rm=3";
                       }}
                     />
+
                     <div className="absolute top-3 right-3 bg-[#3cbe45] text-white text-xs font-bold px-2.5 py-1 rounded-full shadow">
                       {(scan.confidence || 0).toFixed(0)}%
                     </div>

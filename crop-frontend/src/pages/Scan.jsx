@@ -124,15 +124,15 @@ export default function Scan() {
               <span className="material-symbols-outlined">history</span>
               <span className="text-sm font-medium">History</span>
             </a>
-            <a
+            {/* <a
               href="#"
               className="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 dark:text-slate-400 hover:bg-[#3cbe45]/5 transition-colors"
             >
               <span className="material-symbols-outlined">analytics</span>
               <span className="text-sm font-medium">Reports</span>
-            </a>
+            </a> */}
             <a
-              href="#"
+              href="/settings"
               className="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 dark:text-slate-400 hover:bg-[#3cbe45]/5 transition-colors"
             >
               <span className="material-symbols-outlined">settings</span>

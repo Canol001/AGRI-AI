@@ -1,27 +1,38 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig, loadEnv } from "vite";
+import react from "@vitejs/plugin-react";
 
-// https://vite.dev/config/
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    host: true,
-    port: 5173,
-    proxy: {
-      // Proxy /api calls to your Render backend while running locally
-      '/api': {
-        target: 'https://agri-ai-7fnp.onrender.com',
-        changeOrigin: true,
-        secure: true,
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+
+  return {
+    plugins: [react()],
+
+    server: {
+      host: true,
+      port: 5173,
+
+      proxy: {
+        // During local development
+        // /api -> https://agri-ai-7fnp.onrender.com/api
+        "/api": {
+          target: env.VITE_API_BASE_URL,
+          changeOrigin: true,
+          secure: true,
+        },
       },
     },
-  },
-  build: {
-    // For SPA routing on Vercel
-    rollupOptions: {
-      output: {
-        manualChunks: undefined
-      }
-    }
-  }
-})
+
+    define: {
+      // makes env accessible safely
+      __API_BASE_URL__: JSON.stringify(env.VITE_API_BASE_URL),
+    },
+
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: undefined,
+        },
+      },
+    },
+  };
+});

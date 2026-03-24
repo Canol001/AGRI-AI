@@ -217,15 +217,15 @@ export default function Dashboard() {
               <span className="material-symbols-outlined">history</span>
               <span className="text-sm font-medium">History</span>
             </a>
-            <a
+            {/* <a
               href="#"
               className="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 dark:text-slate-400 hover:bg-[#3cbe45]/5 transition-colors"
             >
               <span className="material-symbols-outlined">analytics</span>
               <span className="text-sm font-medium">Reports</span>
-            </a>
+            </a> */}
             <a
-              href="#"
+              href="/settings"
               className="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 dark:text-slate-400 hover:bg-[#3cbe45]/5 transition-colors"
             >
               <span className="material-symbols-outlined">settings</span>
@@ -420,11 +420,12 @@ export default function Dashboard() {
                   {/* Image */}
                   <div className="h-64 md:h-auto md:w-80 lg:w-96 relative">
                     <img
-                      src={`https://agri-ai-7fnp.onrender.com${latest.image || latest.image_url || ""}`}
+                      src={`${import.meta.env.VITE_API_BASE_URL}${latest.image || latest.image_url || ""}`}
                       alt={latest.disease || latest.disease_name || "Crop scan"}
                       className="h-full w-full object-cover"
                       onError={(e) => {
-                        e.target.src = "https://images.unsplash.com/photo-1597843786411-a7fa8ed2f1c4?w=800";
+                        e.currentTarget.src =
+                          "https://tse4.mm.bing.net/th/id/OIP.EMOozEnvhQmAU0Mw4NioSwHaHa?rs=1&pid=ImgDetMain&o=7&rm=3";
                       }}
                     />
                   </div>
