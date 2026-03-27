@@ -27,6 +27,8 @@ from .models import Diagnosis, Scan, UserProfile
 from .serializers import UserSerializer
 from .recommendations import RECOMMENDATIONS
 
+from diagnosis.utils.plant_detector import detect_plant
+
 logger = logging.getLogger(__name__)
 
 # ────────────────────────────────────────────────
@@ -250,18 +252,49 @@ class ScanCropView(APIView):
 
     def post(self, request):
         image_file = request.FILES.get("image")
+
+        # Check if image exists
         if not image_file:
             return Response({"error": "No image uploaded"}, status=400)
+
+        # Validate file type
+        if not image_file.content_type.startswith("image/"):
+            return Response(
+                {"error": "Only image files are allowed"},
+                status=400
+            )
+
+        # Limit file size (5MB)
+        if image_file.size > 5 * 1024 * 1024:
+            return Response(
+                {"error": "Image too large. Maximum allowed size is 5MB"},
+                status=400
+            )
 
         lang = get_user_language(request)
 
         try:
+            # -------------------------------
+            # NEW: Ensure image contains plant
+            # -------------------------------
+            if not detect_plant(image_file):
+                return Response(
+                    {"error": "Only plant images are allowed. Please upload a crop or leaf image."},
+                    status=400
+                )
+
+            # Reset pointer after reading image
+            image_file.seek(0)
+
+            # Run disease prediction
             disease, confidence = predict(image_file)
+
             normalized_disease = disease.lower().replace("__", "_").strip()
 
             recommendation = get_recommendation(normalized_disease, lang)
             disease_display = translate_disease_name(normalized_disease, lang)
 
+            # Save scan record
             scan = Scan.objects.create(
                 user=request.user,
                 image=image_file,
@@ -280,9 +313,13 @@ class ScanCropView(APIView):
 
         except ValueError as ve:
             return Response({"error": str(ve)}, status=400)
+
         except Exception as e:
             logger.exception("Prediction / save failed")
-            return Response({"error": "Internal server error"}, status=500)
+            return Response(
+                {"error": "Internal server error"},
+                status=500
+            )
 
 
 class RecentScansView(APIView):
@@ -413,6 +450,11 @@ class PredictDisease(APIView):
         if not image_file:
             return Response({"error": "No image provided"}, status=400)
 
+        # ----- PLANT DETECTION CHECK -----
+        if not detect_plant(image_file):
+            return Response({"error": "Uploaded image does not seem to be a plant."}, status=400)
+
+        # Continue with disease prediction
         lang = get_user_language(request)
 
         try:
@@ -422,6 +464,7 @@ class PredictDisease(APIView):
             recommendation = get_recommendation(normalized_disease, lang)
             disease_display = translate_disease_name(normalized_disease, lang)
 
+            # Save diagnosis
             Diagnosis.objects.create(
                 image=image_file,
                 disease_name=normalized_disease,
