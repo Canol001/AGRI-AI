@@ -1,36 +1,59 @@
-from transformers import pipeline
+import requests
 from PIL import Image
+import io
 
-# Load classifier once when server starts
-classifier = pipeline("image-classification", model="google/vit-base-patch16-224")
-
-PLANT_KEYWORDS = [
-    "plant",
-    "leaf",
-    "tree",
-    "flower",
-    "corn",
-    "maize",
-    "tomato",
-    "potato",
-    "vegetable",
-    "fruit"
-]
+PLANTNET_API_KEY = "2b10XYYFfAhPQ6CMl7XWUB1xu"
+PLANTNET_URL = "https://my-api.plantnet.org/v2/identify/all"
 
 
 def detect_plant(image_file):
-    image = Image.open(image_file).convert("RGB")
+    try:
+        image_file.seek(0)
 
-    results = classifier(image)
+        # Convert any image format to JPEG
+        image = Image.open(image_file).convert("RGB")
 
-    # results example:
-    # [{'label': 'leaf beetle', 'score': 0.82}, ...]
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG")
+        buffer.seek(0)
 
-    for result in results:
-        label = result["label"].lower()
+        files = {
+            "images": ("image.jpg", buffer, "image/jpeg")
+        }
 
-        for keyword in PLANT_KEYWORDS:
-            if keyword in label:
-                return True
+        params = {
+            "api-key": PLANTNET_API_KEY
+        }
 
-    return False
+        data = {
+            "organs": "leaf"
+        }
+
+        response = requests.post(
+            PLANTNET_URL,
+            files=files,
+            data=data,
+            params=params,
+            timeout=15
+        )
+
+        if response.status_code != 200:
+            print("PlantNet API error:", response.text)
+            return False
+
+        result = response.json()
+
+        results = result.get("results", [])
+
+        if not results:
+            return False
+
+        top_score = results[0].get("score", 0)
+
+        image_file.seek(0)
+
+        return top_score > 0.15
+
+    except Exception as e:
+        print("PlantNet exception:", e)
+        return False

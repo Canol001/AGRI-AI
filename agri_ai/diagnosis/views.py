@@ -27,6 +27,9 @@ from .models import Diagnosis, Scan, UserProfile
 from .serializers import UserSerializer
 from .recommendations import RECOMMENDATIONS
 
+import base64
+from django.core.files.base import ContentFile
+
 from diagnosis.utils.plant_detector import detect_plant
 
 logger = logging.getLogger(__name__)
@@ -446,15 +449,32 @@ class PredictDisease(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+
         image_file = request.FILES.get("image")
+
+        # If image not sent as file, check base64
+        if not image_file:
+            base64_image = request.data.get("image")
+
+            if base64_image:
+                format, imgstr = base64_image.split(';base64,')
+                ext = format.split('/')[-1]
+
+                image_file = ContentFile(
+                    base64.b64decode(imgstr),
+                    name='upload.' + ext
+                )
+
         if not image_file:
             return Response({"error": "No image provided"}, status=400)
 
         # ----- PLANT DETECTION CHECK -----
         if not detect_plant(image_file):
-            return Response({"error": "Uploaded image does not seem to be a plant."}, status=400)
+            return Response(
+                {"error": "Uploaded image does not seem to be a plant."},
+                status=400
+            )
 
-        # Continue with disease prediction
         lang = get_user_language(request)
 
         try:
@@ -464,12 +484,12 @@ class PredictDisease(APIView):
             recommendation = get_recommendation(normalized_disease, lang)
             disease_display = translate_disease_name(normalized_disease, lang)
 
-            # Save diagnosis
             Diagnosis.objects.create(
                 image=image_file,
                 disease_name=normalized_disease,
                 confidence=confidence
             )
+
             scan = Scan.objects.create(
                 user=request.user,
                 image=image_file,
@@ -487,5 +507,5 @@ class PredictDisease(APIView):
             }, status=201)
 
         except Exception as e:
-            logger.exception("Legacy predict failed")
+            logger.exception("Prediction failed")
             return Response({"error": str(e)}, status=500)
