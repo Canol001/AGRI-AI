@@ -41,49 +41,55 @@ logger = logging.getLogger(__name__)
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 _model = None
+_model2 = None
 _class_names = None
 _model_lock = threading.Lock()
 _model_initialized = False
 
-def get_model_and_classes() -> Tuple[nn.Module, list]:
-    global _model, _class_names, _model_initialized
+def load_single_model(path):
+
+    checkpoint = torch.load(
+        path,
+        map_location=DEVICE,
+        weights_only=True
+    )
+
+    class_names = checkpoint["class_names"]
+
+    model = models.resnet18(weights=None)
+    num_features = model.fc.in_features
+    model.fc = nn.Linear(num_features, len(class_names))
+
+    model.load_state_dict(checkpoint["model_state_dict"])
+    model.to(DEVICE)
+    model.eval()
+
+    return model, class_names
+
+
+def get_models_and_classes():
+    global _model1, _model2, _class_names, _model_initialized
 
     if _model_initialized:
-        return _model, _class_names
+        return _model1, _model2, _class_names
 
     with _model_lock:
+
         if _model_initialized:
-            return _model, _class_names
+            return _model1, _model2, _class_names
 
-        logger.info("Loading plant disease classification model...")
+        logger.info("Loading both models...")
 
-        try:
-            checkpoint = torch.load(
-                "diagnosis/ml/model.pth",
-                map_location=DEVICE,
-                weights_only=True
-            )
+        _model1, class_names1 = load_single_model("diagnosis/ml/model.pth")
+        _model2, class_names2 = load_single_model("diagnosis/ml/model2.pth")
 
-            _class_names = checkpoint["class_names"]
+        _class_names = class_names1
 
-            model = models.resnet18(weights=None)
-            num_features = model.fc.in_features
-            model.fc = nn.Linear(num_features, len(_class_names))
+        _model_initialized = True
 
-            model.load_state_dict(checkpoint["model_state_dict"])
-            model.to(DEVICE)
-            model.eval()
+        logger.info("Both models loaded successfully")
 
-            _model = model
-            _model_initialized = True
-
-            logger.info(f"Model loaded successfully on {DEVICE}. Classes: {len(_class_names)}")
-
-        except Exception as e:
-            logger.exception("Failed to load model")
-            raise RuntimeError(f"Model loading failed: {str(e)}") from e
-
-        return _model, _class_names
+    return _model1, _model2, _class_names
 
 
 # ────────────────────────────────────────────────
@@ -163,12 +169,14 @@ def translate_disease_name(name: str, lang: str = 'en') -> str:
 # ────────────────────────────────────────────────
 
 def predict(image_file) -> Tuple[str, float]:
-    model, class_names = get_model_and_classes()
+
+    model1, model2, class_names = get_models_and_classes()
 
     try:
         image = Image.open(image_file).convert("RGB")
     except Exception as e:
         raise ValueError("Invalid image file") from e
+
 
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -181,10 +189,19 @@ def predict(image_file) -> Tuple[str, float]:
 
     input_tensor = transform(image).unsqueeze(0).to(DEVICE)
 
+
     with torch.no_grad():
-        outputs = model(input_tensor)
+
+        outputs1 = model1(input_tensor)
+        outputs2 = model2(input_tensor)
+
+        # Ensemble: average predictions
+        outputs = (outputs1 + outputs2) / 2
+
         probabilities = torch.softmax(outputs, dim=1)
+
         confidence, predicted_idx = torch.max(probabilities, 1)
+
 
     predicted_class = class_names[predicted_idx.item()]
     confidence_pct = round(confidence.item() * 100, 2)
