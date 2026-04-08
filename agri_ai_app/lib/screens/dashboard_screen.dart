@@ -2,12 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../controllers/dashboard_controller.dart';
-import '../widgets/dashboard/kpi_pill.dart';           // ← we'll update this widget
 import '../widgets/dashboard/scan_bottom_sheet.dart';
 import '../widgets/dashboard/diagnosis_hero.dart';
 import '../widgets/dashboard/loading_view.dart';
 import '../widgets/dashboard/error_view.dart';
-import '../widgets/dashboard/dashboard_drawer.dart';
+import '../widgets/bottom_nav_bar.dart';   // ← Correct path
+import '../widgets/dashboard/footer_note.dart';     // ← Correct path
+
+import 'about_screen.dart';
+
+import '../widgets/update_dialog.dart';
+import '../services/update_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -22,6 +27,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _checkUpdate();
     _controller = DashboardController(
       onStateUpdate: () => setState(() {}),
       onNavigateToLogin: () {
@@ -40,57 +46,86 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
+
+
+Future<void> _checkUpdate() async {
+  final update = await UpdateService.checkForUpdate();
+
+  if (update != null && mounted) {
+    showUpdateDialog(context, update);
+  }
+}
+
+
+
+
+
+
   @override
   Widget build(BuildContext context) {
-    if (_controller.isLoading) return const LoadingView();
+    // Loading State
+    if (_controller.isLoading) {
+      return const LoadingView();
+    }
+
+    // Error State - Only show login if truly unauthenticated
     if (_controller.errorMessage != null) {
       return ErrorView(
         message: _controller.errorMessage!,
         onRetry: _controller.loadDashboardData,
+        // Removed showLoginButton - we'll handle login inside controller
       );
     }
 
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
-    final healthColor = _controller.healthRatio == null
-        ? Colors.grey.shade600
-        : _controller.healthRatio! >= 85
-            ? Colors.green.shade700
-            : _controller.healthRatio! >= 60
-                ? Colors.orange.shade700
-                : Colors.red.shade700;
-
-    final alertColor = _controller.recentAlerts > 0 ? Colors.red.shade700 : Colors.green.shade700;
-
-    final latest = _controller.latestScan;
-
     return Scaffold(
-      backgroundColor: isDark ? null : Colors.grey.shade50,
+      backgroundColor: isDark ? Colors.grey[900] : Color(0xFFF8F9F5),
       appBar: AppBar(
-        title: const Text(
-          'Agri AI Dashboard',
+        backgroundColor: Colors.transparent, // make AppBar itself transparent
+        elevation: 0,
+        title: Text(
+          "Agri AI",
           style: TextStyle(
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.4,
+            fontWeight: FontWeight.bold,
+            color: Colors.white, // white looks better on images
           ),
         ),
-        centerTitle: true,
-        elevation: 1,
-        shadowColor: Colors.black.withOpacity(0.08),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout_rounded),
-            tooltip: 'Sign out',
-            onPressed: () => _controller.confirmLogout(context),
-          ),
-          const SizedBox(width: 8),
-        ],
+  actions: [
+    IconButton(
+      icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+      onPressed: () {},
+    ),
+  ],
+  flexibleSpace: Container(
+    decoration: const BoxDecoration(
+      image: DecorationImage(
+        image: NetworkImage(
+          "https://static.vecteezy.com/system/resources/previews/013/681/217/large_2x/abstract-elegant-dark-green-background-with-golden-line-diagonal-and-lighting-effect-sparkle-luxury-template-design-free-vector.jpg"
+        ),
+        fit: BoxFit.cover,
       ),
-      drawer: const DashboardDrawer(),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showModalBottomSheet(
+    ),
+  ),
+),
+
+      bottomNavigationBar: BottomNavBar(
+  currentIndex: 0,        // Dashboard is index 0
+  onTap: (index) {
+    switch (index) {
+      case 0:
+        // Already on Dashboard → do nothing
+        break;
+
+      case 1:
+        // History
+        Navigator.pushReplacementNamed(context, '/history');
+        break;
+
+      case 2:
+        // Scan button - Open bottom sheet
+        showModalBottomSheet(
           context: context,
           isScrollControlled: true,
           backgroundColor: Colors.transparent,
@@ -99,181 +134,327 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onCamera: () => _controller.pickAndPredict(ImageSource.camera),
             isPredicting: _controller.isPredicting,
           ),
-        ),
-        label: const Text('New Scan'),
-        icon: const Icon(Icons.camera_alt_rounded),
-        backgroundColor: colorScheme.primary,
-        elevation: 6,
-        hoverElevation: 12,
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+        );
+        break;
+
+      case 4:
+        // Settings
+        Navigator.pushReplacementNamed(context, '/settings');
+        break;
+
+      case 5:
+        // Profile
+        Navigator.pushReplacementNamed(context, '/profile');
+        break;
+    }
+  },
+),
+
       body: RefreshIndicator(
         onRefresh: _controller.loadDashboardData,
-        color: Colors.green.shade700,
-        child: CustomScrollView(
+        color: const Color(0xFF4CAF50),
+        child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            // Professional urgency banner (less aggressive)
-            if (_controller.recentAlerts > 0)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  child: Card(
-                    color: Colors.red.shade50,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Icon(Icons.warning_amber_rounded, color: Colors.red.shade800, size: 28),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Action Required',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.red.shade900,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '${_controller.recentAlerts} crop issue${_controller.recentAlerts > 1 ? 's' : ''} detected',
-                                  style: TextStyle(color: Colors.red.shade800),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Greeting
+              const Text(
+                "Hello 👋",
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                "Welcome, ${_controller.userName}!",
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
                 ),
               ),
 
-            // KPI Cards – modern card style instead of pills
-            SliverPadding(
-              padding: const EdgeInsets.all(16),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 1.45,
-                ),
-                delegate: SliverChildListDelegate([
-                  _buildKpiCard(
-                    title: 'Total Scans',
-                    value: '${_controller.totalScans}',
-                    icon: Icons.analytics_rounded,
-                    color: Colors.green.shade700,
-                  ),
-                  _buildKpiCard(
-                    title: 'Active Alerts',
-                    value: '${_controller.recentAlerts}',
-                    icon: Icons.notifications_active_rounded,
-                    color: alertColor,
-                  ),
-                  _buildKpiCard(
-                    title: 'Crop Health',
-                    value: _controller.healthRatio != null
-                        ? '${_controller.healthRatio!.toStringAsFixed(0)}%'
-                        : '—',
-                    subtitle: _controller.healthRatio != null
-                        ? _controller.healthRatio! >= 85
-                            ? 'Healthy'
-                            : _controller.healthRatio! >= 60
-                                ? 'Moderate'
-                                : 'Critical'
-                        : null,
-                    icon: Icons.eco_rounded,
-                    color: healthColor,
-                  ),
-                ]),
-              ),
-            ),
+              const SizedBox(height: 20),
 
-            // Latest Diagnosis Section
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              sliver: SliverToBoxAdapter(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Text(
-                        'Latest Analysis',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                    ),
-                    if (latest != null)
-                      DiagnosisHero(result: latest)
-                    else
-                      _buildEmptyState(),
-                  ],
+              // Weather Card
+              _buildWeatherCard(),
+
+              const SizedBox(height: 24),
+
+              // Quick Actions
+              _buildQuickActions(context),
+
+              const SizedBox(height: 28),
+
+              // Tip of the Day
+              _buildTipOfTheDay(),
+
+              const SizedBox(height: 28),
+
+              // KPI Stats (Total Scans, Alerts, Health)
+              _buildKpiSection(),
+
+              const SizedBox(height: 28),
+
+              // Latest Analysis
+              const Text(
+                "Latest Analysis",
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-            ),
+              const SizedBox(height: 12),
+              if (_controller.latestScan != null)
+                DiagnosisHero(result: _controller.latestScan!)
+              else
+                _buildEmptyState(),
 
-            const SliverToBoxAdapter(child: SizedBox(height: 100)), // safe area for FAB
-          ],
+              const SizedBox(height: 80), // Space for bottom nav
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildKpiCard({
-    required String title,
-    required String value,
-    String? subtitle,
-    required IconData icon,
-    required Color color,
-  }) {
-    return Card(
-      elevation: 2,
-      shadowColor: color.withOpacity(0.25),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 32),
-            const SizedBox(height: 12),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey.shade700,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: color,
+  // Weather Card with real data
+Widget _buildWeatherCard() {
+  final weather = _controller.weatherData;
+
+  return Card(
+    elevation: 3,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    child: Padding(
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        children: [
+         Icon(
+  _getWeatherIcon(weather['condition'] ?? ""),
+  size: 52,
+  color: const Color(0xFFFFC107),
+),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  weather['city'] ?? "Your Location",
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
+                
+                Text(
+                  "${weather['temperature']}C",
+                  style: const TextStyle(fontSize: 42, fontWeight: FontWeight.w300, height: 1),
+                ),
+                Text(
+                  weather['condition'],
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _weatherInfo(Icons.water_drop, "${weather['humidity']}"),
+              const SizedBox(height: 12),
+              _weatherInfo(Icons.air, "${weather['windSpeed']}"),
+              const SizedBox(height: 12),
+              _weatherInfo(Icons.cloud, "${weather['cloudiness']}"),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+
+
+IconData _getWeatherIcon(String condition) {
+  final hour = DateTime.now().hour;
+
+  final isNight = hour >= 18 || hour <= 6;
+
+  condition = condition.toLowerCase();
+
+  if (condition.contains("rain")) {
+    return Icons.grain;
+  }
+
+  if (condition.contains("cloud")) {
+    return Icons.cloud;
+  }
+
+  if (condition.contains("clear") || condition.contains("sun")) {
+    return isNight ? Icons.nightlight_round : Icons.wb_sunny_rounded;
+  }
+
+  if (condition.contains("storm")) {
+    return Icons.thunderstorm;
+  }
+
+  if (condition.contains("mist") || condition.contains("fog")) {
+    return Icons.blur_on;
+  }
+
+  return isNight ? Icons.nightlight_round : Icons.wb_cloudy;
+}
+
+Widget _weatherInfo(IconData icon, String value) {
+  return Row(
+    children: [
+      Icon(icon, size: 18, color: Colors.grey.shade600),
+      const SizedBox(width: 8),
+      Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
+    ],
+  );
+}
+
+
+  // Quick Actions
+  Widget _buildQuickActions(BuildContext context) {
+    final actions = [
+      {"icon": Icons.menu_book, "label": "How to", "color": Colors.green},
+      {"icon": Icons.camera_alt, "label": "About us", "color": Colors.purple},
+      {"icon": Icons.camera_alt, "label": "Scan Crop", "color": Colors.orange},
+      {"icon": Icons.trending_up, "label": "Market", "color": Colors.blue},
+      {"icon": Icons.person_search, "label": "Ask Expert", "color": Colors.purple},
+    ];
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceAround,
+      children: actions.map((action) {
+        return GestureDetector(
+          onTap: () {
+            if (action["label"] == "Scan Crop") {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => ScanBottomSheet(
+                  onGallery: () => _controller.pickAndPredict(ImageSource.gallery),
+                  onCamera: () => _controller.pickAndPredict(ImageSource.camera),
+                  isPredicting: _controller.isPredicting,
+                ),
+              );
+            } else if (action["label"] == "About us") {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const AboutUsPage(),
+                ),
+              );
+            } else {
+              // Add navigation for other actions
+            }
+          },
+          child: Column(
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: (action["color"] as Color).withOpacity(0.1),
+                child: Icon(action["icon"] as IconData, color: action["color"] as Color, size: 28),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                action["label"] as String,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
               ),
             ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  // Tip of the Day
+  Widget _buildTipOfTheDay() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8F5E9),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.lightbulb_outline, color: Color(0xFF4CAF50), size: 32),
+          const SizedBox(width: 16),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Tip of the Day",
+                  style: TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF2E7D32)),
+                ),
+                SizedBox(height: 6),
+                Text(
+                  "Water your crops early morning to reduce evaporation and help roots absorb nutrients more effectively.",
+                  style: TextStyle(fontSize: 14, height: 1.4),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.volume_up, color: Color(0xFF4CAF50)),
+        ],
+      ),
+    );
+  }
+
+  // KPI Section
+  Widget _buildKpiSection() {
+    return Row(
+      children: [
+        Expanded(
+          child: _kpiCard("Total Scans", _controller.totalScans.toString(), Icons.analytics),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _kpiCard(
+            "Active Alerts",
+            _controller.recentAlerts.toString(),
+            Icons.notifications_active,
+            color: _controller.recentAlerts > 0 ? Colors.red : Colors.green,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _kpiCard(
+            "Crop Health",
+            _controller.healthRatio != null ? "${_controller.healthRatio!.toStringAsFixed(0)}%" : "—",
+            Icons.eco,
+            color: _controller.healthRatio != null && _controller.healthRatio! >= 85
+                ? Colors.green
+                : Colors.orange,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _kpiCard(String title, String value, IconData icon, {Color? color}) {
+    color ??= const Color(0xFF4CAF50);
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 32),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: color),
+            ),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
           ],
         ),
       ),
@@ -282,35 +463,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildEmptyState() {
     return Card(
-      elevation: 1,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 24),
+      child: const Padding(
+        padding: EdgeInsets.symmetric(vertical: 60),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.eco_outlined,
-              size: 72,
-              color: Colors.green.shade300,
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Ready to Analyze',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey.shade800,
-                  ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Start by scanning a crop leaf using the button below.\nGet instant health insights and recommendations.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                height: 1.4,
-              ),
-            ),
+            Icon(Icons.eco_outlined, size: 80, color: Colors.grey),
+            SizedBox(height: 16),
+            Text("No scans yet", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            SizedBox(height: 8),
+            Text("Tap 'Scan Crop' to get started", style: TextStyle(color: Colors.grey)),
           ],
         ),
       ),

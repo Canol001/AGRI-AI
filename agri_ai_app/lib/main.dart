@@ -8,6 +8,7 @@ import 'screens/dashboard_screen.dart'; // or home_screen.dart — whatever name
 import 'screens/history_screen.dart';   // ← from previous response
 import 'screens/analytics_screen.dart'; // create placeholder
 import 'screens/settings_screen.dart';   // create placeholder
+import 'screens/profile_screen.dart'; // create placeholder
 import 'services/check_update.dart'; // new service for version check
 
 void main() {
@@ -59,6 +60,7 @@ class AgriAIApp extends StatelessWidget {
             '/history': (context) => const HistoryScreen(),
             '/analytics': (context) => const AnalyticsScreen(),
             '/settings': (context) => const SettingsScreen(),
+            '/profile': (context) => const ProfileScreen(),
           },
           onUnknownRoute: (settings) {
             return MaterialPageRoute(

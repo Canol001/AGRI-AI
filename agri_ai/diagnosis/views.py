@@ -38,16 +38,23 @@ logger = logging.getLogger(__name__)
 #  MODEL LOADING (LAZY + THREAD-SAFE)
 # ────────────────────────────────────────────────
 
+# ────────────────────────────────────────────────
+#  MODEL LOADING (LAZY + THREAD-SAFE)
+# ────────────────────────────────────────────────
+
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-_model = None
+_model1 = None
 _model2 = None
-_class_names = None
-_model_lock = threading.Lock()
+_class_names1 = None
+_class_names2 = None
+
+_model_lock = threading.Lock()        # ← This was missing in your file
 _model_initialized = False
 
-def load_single_model(path):
 
+def load_single_model(path):
+    """Load a single ResNet18 checkpoint."""
     checkpoint = torch.load(
         path,
         map_location=DEVICE,
@@ -68,28 +75,32 @@ def load_single_model(path):
 
 
 def get_models_and_classes():
-    global _model1, _model2, _class_names, _model_initialized
+    """Lazy load both models with thread safety."""
+    global _model1, _model2, _class_names1, _class_names2, _model_initialized
 
     if _model_initialized:
-        return _model1, _model2, _class_names
+        return _model1, _model2, _class_names1, _class_names2
 
     with _model_lock:
-
-        if _model_initialized:
-            return _model1, _model2, _class_names
+        if _model_initialized:  # double-check inside lock
+            return _model1, _model2, _class_names1, _class_names2
 
         logger.info("Loading both models...")
 
-        _model1, class_names1 = load_single_model("diagnosis/ml/model.pth")
-        _model2, class_names2 = load_single_model("diagnosis/ml/model2.pth")
+        try:
+            _model1, _class_names1 = load_single_model("diagnosis/ml/model.pth")
+            _model2, _class_names2 = load_single_model("diagnosis/ml/model2.pth")
 
-        _class_names = class_names1
+            logger.info(f"Model 1 loaded with {len(_class_names1)} classes")
+            logger.info(f"Model 2 loaded with {len(_class_names2)} classes")
 
-        _model_initialized = True
+            _model_initialized = True
 
-        logger.info("Both models loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load models: {e}")
+            raise RuntimeError("Model loading failed") from e
 
-    return _model1, _model2, _class_names
+    return _model1, _model2, _class_names1, _class_names2
 
 
 # ────────────────────────────────────────────────
@@ -169,44 +180,48 @@ def translate_disease_name(name: str, lang: str = 'en') -> str:
 # ────────────────────────────────────────────────
 
 def predict(image_file) -> Tuple[str, float]:
-
-    model1, model2, class_names = get_models_and_classes()
+    """Ensemble prediction from both models using class name matching."""
+    model1, model2, class_names1, class_names2 = get_models_and_classes()
 
     try:
         image = Image.open(image_file).convert("RGB")
     except Exception as e:
         raise ValueError("Invalid image file") from e
 
-
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
-        transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std=[0.229, 0.224, 0.225]
-        )
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
     input_tensor = transform(image).unsqueeze(0).to(DEVICE)
 
-
     with torch.no_grad():
+        logits1 = model1(input_tensor)
+        logits2 = model2(input_tensor)
 
-        outputs1 = model1(input_tensor)
-        outputs2 = model2(input_tensor)
+        prob1 = torch.softmax(logits1, dim=1)[0]
+        prob2 = torch.softmax(logits2, dim=1)[0]
 
-        # Ensemble: average predictions
-        outputs = (outputs1 + outputs2) / 2
+    # Combine probabilities by class name
+    combined_probs = {}
 
-        probabilities = torch.softmax(outputs, dim=1)
+    # From model 1
+    for i, cls in enumerate(class_names1):
+        combined_probs[cls] = prob1[i].item()
 
-        confidence, predicted_idx = torch.max(probabilities, 1)
+    # From model 2 (average if class exists in both)
+    for i, cls in enumerate(class_names2):
+        if cls in combined_probs:
+            combined_probs[cls] = (combined_probs[cls] + prob2[i].item()) / 2.0
+        else:
+            combined_probs[cls] = prob2[i].item()
 
+    # Get best class and confidence
+    best_class = max(combined_probs, key=combined_probs.get)
+    confidence = round(combined_probs[best_class] * 100, 2)
 
-    predicted_class = class_names[predicted_idx.item()]
-    confidence_pct = round(confidence.item() * 100, 2)
-
-    return predicted_class, confidence_pct
+    return best_class, confidence
 
 
 # ────────────────────────────────────────────────

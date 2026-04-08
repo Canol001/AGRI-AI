@@ -114,7 +114,7 @@ export default function Dashboard() {
       setStorageUsedPercent(Math.min(100, Math.round((dashboardRes.data.total_scans || 0) / 10)));
     } catch (err) {
       console.error("Prediction error:", err);
-      setPredictionError("Failed! Upload a clear crop image. Please try again.");
+      setPredictionError("Failed! Please upload a clear crop image and try again.");
     } finally {
       setPredicting(false);
     }
