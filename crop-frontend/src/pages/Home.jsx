@@ -220,7 +220,7 @@ export default function Home() {
               { q: "Is Agri AI free?", a: "Yes — completely free with no in-app purchases or ads." },
               { q: "How do I install the APK?", a: "Download → open file → allow unknown sources → install. You may need to enable this in Settings → Apps → Special app access." },
               { q: "Does it work offline?", a: "Basic detection works offline after first use. Internet improves accuracy and updates models." },
-              { q: "Which crops are supported?", a: "Maize, rice, tomatoes, potatoes, beans, cassava, wheat, coffee, bananas, and more — list grows monthly." },
+              { q: "Which crops are supported?", a: "Maize, rice, tomatoes, beans and Sukuma wiki — list grows monthly." },
             ].map((item, i) => (
               <div key={i} className="bg-emerald-50 rounded-2xl p-6 md:p-8">
                 <h3 className="text-xl md:text-2xl font-semibold text-green-800 flex items-start gap-4">
