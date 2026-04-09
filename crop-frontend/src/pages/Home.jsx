@@ -4,7 +4,7 @@ export default function Home() {
   // You can also fetch this dynamically later if needed
   const apkDownloadUrl = "/app-release.apk"; // assuming it's in /public/app-release.apk
   const apkFileName = "app-release.apk";
-  const version = "1.0.0"; // change this when you update the app
+  const version = "1.0.2"; // change this when you update the app
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50 font-sans antialiased">

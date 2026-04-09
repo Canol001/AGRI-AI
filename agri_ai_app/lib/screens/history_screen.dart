@@ -147,10 +147,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
         );
         break;
-      case 3:
+      case 4:
         Navigator.pushReplacementNamed(context, '/settings');
         break;
-      case 4:
+      case 5:
         Navigator.pushReplacementNamed(context, '/profile');
         break;
     }

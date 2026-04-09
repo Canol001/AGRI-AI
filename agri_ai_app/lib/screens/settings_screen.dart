@@ -169,7 +169,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             );
           }
           if (index == 3) return;
-          if (index == 4) Navigator.pushReplacementNamed(context, '/profile');
+          if (index == 5) Navigator.pushReplacementNamed(context, '/profile');
         },
       ),
       body: SingleChildScrollView(
